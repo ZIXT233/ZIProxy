@@ -1,38 +1,44 @@
 package http
 
 import (
-	"crypto/tls"
 	"fmt"
 	"io"
 	"log"
 	"net"
 	"net/url"
 	"strings"
+	"sync"
 
+	"github.com/ZIXT233/ziproxy/db"
 	"github.com/ZIXT233/ziproxy/proxy"
+	"github.com/ZIXT233/ziproxy/utils"
 )
 
 type Inbound struct {
-	addr   string
-	name   string
-	config map[string]interface{}
-	tls    *tls.Config
+	addr         string
+	name         string
+	config       map[string]interface{}
+	closeChanSet sync.Map
 }
 
 func (in *Inbound) Scheme() string                 { return scheme }
 func (in *Inbound) Addr() string                   { return in.addr }
 func (in *Inbound) Name() string                   { return in.name }
 func (in *Inbound) Config() map[string]interface{} { return in.config }
-func (in *Inbound) Stop()                          { return }
+func (in *Inbound) Stop() {
+	in.CloseAllConn()
+	return
+}
 
 func init() {
 	proxy.RegisterInbound(scheme, HttpInboundCreator)
 	proxy.RegisterInbound("https", HttpInboundCreator)
 }
-func HttpInboundCreator(config map[string]interface{}) (proxy.Inbound, error) {
+func HttpInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
+	config, _ := utils.UnmarshalConfig(proxyData.Config)
 	in := &Inbound{
 		addr:   config["address"].(string),
-		name:   config["name"].(string),
+		name:   proxyData.ID,
 		config: config,
 	}
 	return in, nil
@@ -57,38 +63,48 @@ func (c *InConn) Read(b []byte) (n int, err error) {
 func (c *InConn) Write(b []byte) (n int, err error) {
 	return c.Conn.Write(b)
 }
-func (in *Inbound) WrapConn(underlay net.Conn) (io.ReadWriter, *proxy.TargetAddr, error) {
+
+func (in *Inbound) UnregCloseChan(closeChan chan struct{}) {
+	proxy.UnregCloseChan(&in.closeChanSet, closeChan)
+}
+func (in *Inbound) CloseAllConn() {
+	proxy.CloseAllConn(&in.closeChanSet)
+}
+func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (io.ReadWriter, *proxy.TargetAddr, chan struct{}, error) {
 	wrappedConn := &InConn{Conn: underlay}
 	var b [1024]byte
 	n, err := underlay.Read(b[:])
 	if err != nil {
 		log.Println("read", err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	var method, URL, address string
-	var header map[string]string
-	header = make(map[string]string)
+	header := make(map[string]string)
 	//split b by '\r\n
 	headLines := strings.Split(string(b[:n]), "\r\n")
 	for _, line := range headLines {
-		log.Println(line)
 		pair := strings.SplitN(line, ":", 2)
 		if len(pair) == 2 {
 			header[pair[0]] = strings.Trim(pair[1], "\r\n ")
 		}
 	}
-
-	if in.config["auth"] != nil {
-		auth := in.config["auth"].(map[string]interface{})
-		if auth["username"].(string) != header["username"] || auth["password"].(string) != header["password"] {
-			fmt.Fprint(underlay,
-				"HTTP/1.1 200 OK\r\n"+
-					"Content-Type: text/plain\r\n"+
-					"Content-Length: 11\r\n"+
-					"\r\n"+
-					"Hello World")
-			return nil, nil, proxy.ProxyEnd
+	userId := authFunc(header)
+	forward := in.config["guestForward"]
+	if forward != nil && userId == "guest" {
+		forwardAddr, ok := forward.(string)
+		if !ok {
+			return nil, nil, nil, fmt.Errorf("guestForward config error")
 		}
+		wrappedConn.headBuf = b[:n]
+		forwardConn, err := net.Dial("tcp", forwardAddr)
+		if err != nil {
+			log.Println("dial", err)
+			return nil, nil, nil, err
+		}
+		log.Printf("auth fail, forward to %s", forwardAddr)
+		go io.Copy(forwardConn, wrappedConn)
+		io.Copy(wrappedConn, forwardConn)
+		return nil, nil, nil, fmt.Errorf("auth fail")
 	}
 	fmt.Sscanf(headLines[0], "%s%s", &method, &URL)
 	if method == "CONNECT" {
@@ -96,7 +112,7 @@ func (in *Inbound) WrapConn(underlay net.Conn) (io.ReadWriter, *proxy.TargetAddr
 	} else { //否则为 http 协议
 		hostPortURL, err := url.Parse(URL)
 		if err != nil {
-			return nil, nil, err
+			return nil, nil, nil, err
 		}
 		address = hostPortURL.Host
 		if strings.Index(hostPortURL.Host, ":") == -1 {
@@ -105,10 +121,11 @@ func (in *Inbound) WrapConn(underlay net.Conn) (io.ReadWriter, *proxy.TargetAddr
 	}
 
 	targetAddr, err := proxy.NewTargetAddr(address)
+	targetAddr.UserId = userId
 
 	if err != nil {
 		log.Println(err)
-		return nil, nil, err
+		return nil, nil, nil, err
 	}
 	if method == "CONNECT" {
 		fmt.Fprint(underlay, "HTTP/1.1 200 Connection established\r\n\r\n")
@@ -118,6 +135,23 @@ func (in *Inbound) WrapConn(underlay net.Conn) (io.ReadWriter, *proxy.TargetAddr
 		wrappedConn.httpType = "http"
 		wrappedConn.headBuf = b[:n]
 	}
+	closeChan := make(chan struct{})
+	in.closeChanSet.LoadOrStore(closeChan, struct{}{})
+	return wrappedConn, targetAddr, closeChan, nil
+}
 
-	return wrappedConn, targetAddr, nil
+func (in *Inbound) GetLinkConfig(defaultAccessAddr, userId, passwd string) map[string]interface{} {
+	config := make(map[string]interface{})
+	for key, value := range in.config {
+		config[key] = value
+	}
+
+	addr := proxy.GetLinkAddr(in, defaultAccessAddr)
+	config["address"] = addr
+	config["url"] = in.config["scheme"].(string) + "://" + addr
+	config["auth"] = map[string]string{
+		"username": userId,
+		"password": passwd,
+	}
+	return config
 }

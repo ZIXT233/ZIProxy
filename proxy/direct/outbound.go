@@ -1,34 +1,48 @@
 package direct
 
 import (
-	"github.com/ZIXT233/ziproxy/proxy"
 	"io"
 	"net"
+	"sync"
+
+	"github.com/ZIXT233/ziproxy/db"
+	"github.com/ZIXT233/ziproxy/proxy"
+	"github.com/ZIXT233/ziproxy/utils"
 )
 
 const scheme = "direct"
 
-type Direct struct {
-	name   string
-	config map[string]interface{}
+type Outbound struct {
+	name         string
+	config       map[string]interface{}
+	closeChanSet sync.Map
 }
 
-func (d *Direct) Name() string                   { return d.name }
-func (d *Direct) Scheme() string                 { return scheme }
-func (d *Direct) Config() map[string]interface{} { return d.config }
-func (d *Direct) Addr() string                   { return scheme }
+func (d *Outbound) Name() string                   { return d.name }
+func (d *Outbound) Scheme() string                 { return scheme }
+func (d *Outbound) Config() map[string]interface{} { return d.config }
+func (d *Outbound) Addr() string                   { return scheme }
 
 func init() {
 	proxy.RegisterOutbound(scheme, directOutboundCreator)
 }
 
-func directOutboundCreator(config map[string]interface{}) (proxy.Outbound, error) {
-	return &Direct{
-		name:   config["name"].(string),
+func directOutboundCreator(proxyData *db.ProxyData) (proxy.Outbound, error) {
+	config, _ := utils.UnmarshalConfig(proxyData.Config)
+	return &Outbound{
+		name:   proxyData.ID,
 		config: config,
 	}, nil
 }
 
-func (d *Direct) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, error) {
-	return underlay, nil
+func (out *Outbound) UnregCloseChan(closeChan chan struct{}) {
+	proxy.UnregCloseChan(&out.closeChanSet, closeChan)
+}
+func (out *Outbound) CloseAllConn() {
+	proxy.CloseAllConn(&out.closeChanSet)
+}
+func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, chan struct{}, error) {
+	closeChan := make(chan struct{})
+	out.closeChanSet.LoadOrStore(closeChan, struct{}{})
+	return underlay, closeChan, nil
 }

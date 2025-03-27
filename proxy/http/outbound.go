@@ -2,16 +2,21 @@ package http
 
 import (
 	"fmt"
-	"github.com/ZIXT233/ziproxy/proxy"
 	"io"
 	"net"
 	"strings"
+	"sync"
+
+	"github.com/ZIXT233/ziproxy/db"
+	"github.com/ZIXT233/ziproxy/proxy"
+	"github.com/ZIXT233/ziproxy/utils"
 )
 
 type Outbound struct {
-	addr   string
-	name   string
-	config map[string]interface{}
+	addr         string
+	name         string
+	config       map[string]interface{}
+	closeChanSet sync.Map
 }
 
 func (out *Outbound) Scheme() string                 { return scheme }
@@ -23,35 +28,50 @@ func init() {
 	proxy.RegisterOutbound(scheme, HttpOutboundCreator)
 	proxy.RegisterOutbound(scheme+"s", HttpOutboundCreator)
 }
-func HttpOutboundCreator(config map[string]interface{}) (proxy.Outbound, error) {
+func HttpOutboundCreator(proxyData *db.ProxyData) (proxy.Outbound, error) {
+	config, _ := utils.UnmarshalConfig(proxyData.Config)
+	addr, ok := config["address"].(string)
+	if !ok {
+		return nil, fmt.Errorf("address is required")
+	}
 	out := &Outbound{
-		addr:   config["address"].(string),
-		name:   config["name"].(string),
+		addr:   addr,
+		name:   proxyData.ID,
 		config: config,
 	}
 	return out, nil
 }
 
-func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, error) {
+func (out *Outbound) UnregCloseChan(closeChan chan struct{}) {
+	proxy.UnregCloseChan(&out.closeChanSet, closeChan)
+}
+func (out *Outbound) CloseAllConn() {
+	proxy.CloseAllConn(&out.closeChanSet)
+}
+
+func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, chan struct{}, error) {
 	var authHead string
 	if out.config["auth"] != nil {
 		auth := out.config["auth"].(map[string]interface{})
 		authHead = fmt.Sprintf("username:%s\r\npassword:%s\r\n",
-			auth["username"].(string), auth["password"].(string))
+			auth["username"].(string), utils.SHA256([]byte(auth["password"].(string))))
 	}
 	_, err := fmt.Fprintf(underlay, "CONNECT %s HTTP/1.1\r\n"+
 		"%s"+
 		"\r\n", target.String(), authHead)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	var oriRead [1024]byte
 	oriLen, err := underlay.Read(oriRead[:])
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if !strings.Contains(string(oriRead[:oriLen]), "200") {
-		return nil, fmt.Errorf("not established")
+		return nil, nil, fmt.Errorf("not established")
 	}
-	return underlay, nil
+
+	closeChan := make(chan struct{})
+	out.closeChanSet.LoadOrStore(closeChan, struct{}{})
+	return underlay, closeChan, nil
 }

@@ -1,40 +1,7 @@
 {
-  "inbounds": [
-    {
-      "name": "http",
-      "scheme": "http",
-      "address": "localhost:8080"
-    },
-    {
-      "scheme": "tls",
-      "cert": "cert/server.crt",
-      "key": "cert/server.key",
-      "upper": {
-        "name": "https",
-        "scheme": "https",
-        "address": "0.0.0.0:8083",
-        "auth": {
-            "username": "zixt",
-            "password": "1331"
-        }
-      }
-    },
-    {
-      "name": "http2",
-      "scheme": "http",
-      "address": "localhost:8081"
-    }
-  ],
-
-  "outbounds": [
-    {
-      "name": "v2ray",
-      "scheme": "http",
-      "address": "localhost:1087"
-    },
-    {
-      "name": "direct",
-      "scheme": "direct"
-    }
-  ]
+  "db": "ziproxy.db",
+  "statistic_db": "ziproxy_statistic.db",
+  "web_address": "127.0.0.1:2339",
+  "web_secret": "23333",
+  "static_path": "./static"
 }

@@ -2,40 +2,47 @@ package tls
 
 import (
 	stdtls "crypto/tls"
-	"github.com/ZIXT233/ziproxy/proxy"
 	"io"
 	"net"
+	"sync"
+
+	"github.com/ZIXT233/ziproxy/db"
+	"github.com/ZIXT233/ziproxy/proxy"
+	"github.com/ZIXT233/ziproxy/utils"
 )
 
 type Outbound struct {
-	addr      string
-	name      string
-	config    map[string]interface{}
-	tlsConfig *stdtls.Config
-	upper     proxy.Outbound
+	addr         string
+	name         string
+	config       map[string]interface{}
+	tlsConfig    *stdtls.Config
+	upper        proxy.Outbound
+	closeChanSet sync.Map
 }
 
 func init() {
 	proxy.RegisterOutbound(scheme, TlsOutboundCreator)
 }
-func TlsOutboundCreator(config map[string]interface{}) (proxy.Outbound, error) {
-
+func TlsOutboundCreator(proxyData *db.ProxyData) (proxy.Outbound, error) {
+	config, _ := utils.UnmarshalConfig(proxyData.Config)
 	out := &Outbound{
+		name:   proxyData.ID,
 		config: config,
 	}
 
-	upperConfig := config["upper"].(map[string]interface{})
-	if upperConfig != nil {
-		upper, err := proxy.OutboundFromConfig(upperConfig)
+	if up, ok := config["upper"]; ok {
+		upperConfig := utils.MarshalConfig(up.(map[string]interface{}))
+		upper, err := proxy.OutboundFromConfig(&db.ProxyData{
+			ID:     proxyData.ID,
+			Config: upperConfig,
+		})
 		if err != nil {
 			return nil, err
 		}
 		out.upper = upper
 		out.addr = upper.Addr()
-		out.name = upper.Name()
 	} else {
 		out.addr = config["address"].(string)
-		out.name = config["name"].(string)
 	}
 
 	sni, _, _ := net.SplitHostPort(out.addr)
@@ -46,15 +53,31 @@ func TlsOutboundCreator(config map[string]interface{}) (proxy.Outbound, error) {
 	return out, nil
 }
 
-func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, error) {
+func (out *Outbound) UnregCloseChan(closeChan chan struct{}) {
+	if out.upper != nil {
+		out.upper.UnregCloseChan(closeChan)
+	} else {
+		proxy.UnregCloseChan(&out.closeChanSet, closeChan)
+	}
+}
+func (out *Outbound) CloseAllConn() {
+	if out.upper != nil {
+		out.upper.CloseAllConn()
+	} else {
+		proxy.CloseAllConn(&out.closeChanSet)
+	}
+}
+func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, chan struct{}, error) {
 	tlsConn := stdtls.Client(underlay, out.tlsConfig)
 	err := tlsConn.Handshake()
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	if out.upper != nil {
 		return out.upper.WrapConn(tlsConn, target)
 	} else {
-		return tlsConn, nil
+		closeChan := make(chan struct{})
+		out.closeChanSet.LoadOrStore(closeChan, struct{}{})
+		return tlsConn, closeChan, nil
 	}
 }

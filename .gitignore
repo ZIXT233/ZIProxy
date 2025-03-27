@@ -1,1 +1,3 @@
-/cert/
+/static/cert/
+*.db
+ziproxy
