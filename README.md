@@ -13,7 +13,7 @@ ZIProxy是一款集成代理系统，支持可插拔协议实现，路由管理�
 ziproxy运行需要依赖一些静态文件，请放置在当前目录static文件夹或者在配置中指定路径。
 ## 配置
 `config.json`有如下配置项
-```json
+```json5
 {
   //代理配置db路径，使用sqlite3
   "db": "ziproxy.db",          
