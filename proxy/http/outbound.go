@@ -54,7 +54,7 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.R
 	if out.config["auth"] != nil {
 		auth := out.config["auth"].(map[string]interface{})
 		authHead = fmt.Sprintf("username:%s\r\npassword:%s\r\n",
-			auth["username"].(string), utils.SHA256([]byte(auth["password"].(string))))
+			auth["username"].(string), auth["password"].(string))
 	}
 	_, err := fmt.Fprintf(underlay, "CONNECT %s HTTP/1.1\r\n"+
 		"%s"+
