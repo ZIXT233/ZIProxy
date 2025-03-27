@@ -37,9 +37,7 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 	go func() {
 		acceptEnd := false
 		go func() {
-			log.Printf("%s Listening on %s", inbound.Name(), listener.Addr())
 			<-stopChan
-			log.Printf("%s End Listening on %s", inbound.Name(), listener.Addr())
 			acceptEnd = true
 			listener.Close()
 			inbound.Stop()
@@ -140,9 +138,7 @@ func attachInboundProc(id string) (err error) {
 func stopInboundProc(id string) {
 	stopChan, ok := InboundProcStopChanMap[id]
 	if ok {
-		log.Printf("send stop inbound proc %s", id)
 		stopChan <- struct{}{}
-		log.Printf("sned ok stop inbound proc %s", id)
 		for {
 			_, alive := InboundProcStopChanMap[id]
 			if !alive {
