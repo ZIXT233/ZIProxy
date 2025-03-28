@@ -57,6 +57,9 @@ func SyncOutbound(d *db.ProxyData) {
 	if old, exists := OutboundMap.Load(d.ID); exists {
 		old.(proxy.Outbound).CloseAllConn()
 	}
+	if d.ID == "block" {
+		return
+	}
 	outbound, err := proxy.OutboundFromConfig(d)
 	if err != nil {
 		log.Printf("Failed to load outbound %s err: %v", d.ID, err)

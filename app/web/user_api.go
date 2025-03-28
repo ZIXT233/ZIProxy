@@ -104,6 +104,22 @@ func updateUser(c *gin.Context) {
 
 func deleteUser(c *gin.Context) {
 	id := c.Param("id")
+	user, err := manager.DBM.User.GetByID(id)
+	if err != nil {
+		c.JSON(500, errorR(500, "Failed to fetch user"))
+		return
+	}
+	if user.UserGroupID == "管理员" {
+		userGroup, err := manager.DBM.UserGroup.GetByID(user.UserGroupID)
+		if err != nil {
+			c.JSON(500, errorR(500, "获取用户组失败"))
+			return
+		}
+		if len(userGroup.Users) <= 1 {
+			c.JSON(400, errorR(500, "管理员用户组至少保留一个用户"))
+			return
+		}
+	}
 	if err := manager.DBM.User.Delete(id); err != nil {
 		c.JSON(500, errorR(500, "Failed to delete user"))
 		return
@@ -262,7 +278,10 @@ func updateUserGroup(c *gin.Context) {
 
 func deleteUserGroup(c *gin.Context) {
 	id := c.Param("id")
-
+	if id == "管理员" {
+		c.JSON(400, errorR(400, "不能删除管理员用户组"))
+		return
+	}
 	if err := manager.DBM.UserGroup.Delete(id); err != nil {
 		c.JSON(500, errorR(500, "删除用户组失败"))
 		return

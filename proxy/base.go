@@ -125,7 +125,10 @@ func UnregCloseChan(closeChanSet *sync.Map, closeChan chan struct{}) {
 }
 func CloseAllConn(closeChanSet *sync.Map) {
 	closeChanSet.Range(func(key, value interface{}) bool {
-		key.(chan struct{}) <- struct{}{}
+		select {
+		case key.(chan struct{}) <- struct{}{}: //如果不能发送代表已经关闭但是还未取消注册，忽略
+		default:
+		}
 		return true
 	})
 }

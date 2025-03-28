@@ -4,6 +4,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime"
 	"time"
 
 	"github.com/ZIXT233/ziproxy/proxy"
@@ -48,9 +49,9 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 			inConn, err := listener.Accept()
 			if err != nil {
 				if acceptEnd {
-					log.Printf("inbound %s monitor end", inbound.Name())
+					log.Printf("Inbound %s process end", inbound.Name())
 				} else {
-					log.Printf("inbound %s accept %s fail", inbound.Name(), inConn.RemoteAddr().String())
+					log.Printf("Inbound %s accept %s fail", inbound.Name(), inConn.RemoteAddr().String())
 				}
 				break
 			}
@@ -58,6 +59,7 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 			go func() {
 				defer inConn.Close()
 				wrappedInConn, targetAddr, inCloseChan, err := inbound.WrapConn(inConn, proxyAuth)
+				defer inbound.UnregCloseChan(inCloseChan)
 				if err != nil {
 					log.Printf("inbound %s recieve %s fail", inbound.Name(), inConn.RemoteAddr().String())
 					return
@@ -67,7 +69,12 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 
 				val, ok := OutboundMap.Load(outboundName)
 				if !ok {
-					log.Println("outbound not found")
+					if outboundName == "block" {
+						log.Printf("Block %s@%s ---> %s\t\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), targetAddr, runtime.NumGoroutine())
+					} else {
+						log.Printf("Outbound %s not found", outboundName)
+					}
+
 					return
 				}
 				outbound := val.(proxy.Outbound)
@@ -85,22 +92,27 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 				}
 				defer outConn.Close()
 				wrappedOutConn, outCloseChan, err := outbound.WrapConn(outConn, targetAddr)
+				defer outbound.UnregCloseChan(outCloseChan)
 				if err != nil {
 					log.Println("wrap out conn ", err)
 					return
 				}
 
-				log.Printf("Start %s@%s ---> %s ---> %s", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr)
+				commonCloseChan := make(chan struct{})
+				log.Printf("Start %s@%s ---> %s ---> %s\t\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr, runtime.NumGoroutine())
 				go func() {
+					var reason string
 					select {
 					case <-outCloseChan:
-						log.Printf("outbound %s closed", outbound.Name())
+						reason = "outbound closed"
+						outConn.Close()
 					case <-inCloseChan:
-
-						log.Printf("inbound %s closed", inbound.Name())
+						reason = "inbound closed"
+						inConn.Close()
+					case <-commonCloseChan:
+						reason = "transport finished"
 					}
-					outConn.Close()
-					inConn.Close()
+					log.Printf("End   %s@%s ---> %s ---> %s\t\tdue to %s\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr, reason, runtime.NumGoroutine())
 				}()
 
 				statisticOutConn := StatisticWrap(wrappedOutConn)
@@ -110,12 +122,13 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 					io.Copy(wrappedInConn, statisticOutConn)
 				}
 				subActiveUserLink(targetAddr.UserId)
-				inbound.UnregCloseChan(inCloseChan)
-				outbound.UnregCloseChan(outCloseChan)
+				select {
+				case commonCloseChan <- struct{}{}:
+				default:
+				}
 
 				statisticOutConn.AddToDB(inbound.Name(), outbound.Name(), targetAddr.UserId, targetAddr.String())
 
-				log.Printf("End   %s@%s ---> %s ---> %s", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr)
 			}()
 		}
 	}()

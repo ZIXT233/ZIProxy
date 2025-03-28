@@ -127,7 +127,7 @@ func StartWeb(config *utils.RootConfig) {
 			admin.PUT("/system/info", updateSystemInfo)
 		}
 
-		log.Printf("Web面板启动，地址：%s，静态文件路径：%s", address, staticPath)
+		log.Printf("Web面板启动，地址：http://%s，静态文件路径：%s", address, staticPath)
 		r.Run(address)
 	}()
 }

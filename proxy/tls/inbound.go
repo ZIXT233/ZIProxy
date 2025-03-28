@@ -39,7 +39,7 @@ func TlsInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
 	keyFile := config["key"].(string)
 	cert, err := stdtls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		log.Fatalf("tls.LoadX509KeyPair err: %v", err)
+		log.Printf("%s tls.LoadX509KeyPair err: %v", proxyData.ID, err)
 		return nil, err
 	}
 

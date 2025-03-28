@@ -151,6 +151,10 @@ func updateProxyData(c *gin.Context) {
 
 func deleteProxyData(c *gin.Context) {
 	id := c.Param("id")
+	if id == "block" {
+		c.JSON(400, errorR(400, "Cannot delete default proxy data"))
+		return
+	}
 	dbData, err := manager.DBM.ProxyData.GetByID(id)
 	if err != nil {
 		c.JSON(500, errorR(500, "Failed to fetch proxy data"))
