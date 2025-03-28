@@ -43,6 +43,7 @@ func SyncInbound(d *db.ProxyData) {
 	inbound, err := proxy.InboundFromConfig(d)
 	if err != nil {
 		log.Printf("Failed to load inbound %s err: %v", d.ID, err)
+		return
 	}
 	InboundMap.Store(d.ID, inbound)
 	if d.Enabled {
@@ -63,6 +64,7 @@ func SyncOutbound(d *db.ProxyData) {
 	outbound, err := proxy.OutboundFromConfig(d)
 	if err != nil {
 		log.Printf("Failed to load outbound %s err: %v", d.ID, err)
+		return
 	}
 	OutboundMap.Store(d.ID, outbound)
 }
