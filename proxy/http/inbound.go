@@ -145,7 +145,7 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	addr := proxy.GetLinkAddr(in, defaultAccessAddr)
 	config := map[string]interface{}{
-		"scheme":    in.Scheme(),
+		"scheme":    in.config["scheme"].(string),
 		"address":   addr,
 		"url":       in.config["scheme"].(string) + "://" + addr,
 		"linkToken": token,

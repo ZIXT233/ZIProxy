@@ -22,7 +22,7 @@ type Inbound struct {
 }
 
 func (in *Inbound) Name() string                   { return in.name }
-func (in *Inbound) Scheme() string                 { return scheme + " " + in.upper.Scheme() }
+func (in *Inbound) Scheme() string                 { return scheme }
 func (in *Inbound) Addr() string                   { return in.addr }
 func (in *Inbound) Config() map[string]interface{} { return in.config }
 func (in *Inbound) Stop() {
@@ -100,7 +100,7 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 
 func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	config := make(map[string]interface{})
-	config["scheme"] = in.Scheme()
+	config["scheme"] = scheme
 	if in.upper != nil {
 		upperConfig := in.upper.GetLinkConfig(defaultAccessAddr, token)
 		config["upper"] = upperConfig
