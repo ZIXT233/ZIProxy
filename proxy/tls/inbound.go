@@ -98,13 +98,11 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	}
 }
 
-func (in *Inbound) GetLinkConfig(defaultAccessAddr, userId, passwd string) map[string]interface{} {
+func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	config := make(map[string]interface{})
-	for key, value := range in.config {
-		config[key] = value
-	}
+	config["scheme"] = in.Scheme()
 	if in.upper != nil {
-		upperConfig := in.upper.GetLinkConfig(defaultAccessAddr, userId, passwd)
+		upperConfig := in.upper.GetLinkConfig(defaultAccessAddr, token)
 		config["upper"] = upperConfig
 	} else {
 		config["address"] = proxy.GetLinkAddr(in, defaultAccessAddr)

@@ -28,7 +28,7 @@ func getAllInbound(c *gin.Context) {
 			config, _ := utils.UnmarshalConfig(proxyData.Config)
 			linkConfig := ""
 			if inboundInstance, ok := manager.InboundMap.Load(proxyData.ID); ok {
-				linkConfig = utils.MarshalConfig(inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.ID, user.Password))
+				linkConfig = utils.MarshalConfig(inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.LinkToken))
 			}
 			inbounds = append(inbounds, gin.H{
 				"id":         proxyData.ID,
@@ -84,7 +84,7 @@ func getProxyData(c *gin.Context) {
 	scheme := config["scheme"].(string)
 	linkConfig := ""
 	if inboundInstance, ok := manager.InboundMap.Load(proxyData.ID); ok {
-		linkConfig = utils.MarshalConfig(inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.ID, user.Password))
+		linkConfig = utils.MarshalConfig(inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.LinkToken))
 	}
 	c.JSON(200, successR(gin.H{
 		"id":         proxyData.ID,
@@ -214,7 +214,7 @@ func getUsableInbounds(c *gin.Context) {
 			inboundInstance, ok := manager.InboundMap.Load(inbound.ID)
 			linkConfig := ""
 			if ok {
-				config := inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.ID, user.Password)
+				config := inboundInstance.(proxy.Inbound).GetLinkConfig(c.Request.Host, user.LinkToken)
 				linkConfig = utils.MarshalConfig(config)
 			}
 			inbounds = append(inbounds, gin.H{

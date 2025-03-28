@@ -23,7 +23,7 @@ type Inbound interface {
 	Config() map[string]interface{}
 	WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (io.ReadWriter, *TargetAddr, chan struct{}, error)
 	UnregCloseChan(closeChan chan struct{})
-	GetLinkConfig(defaultHost, userId, passwd string) map[string]interface{}
+	GetLinkConfig(defaultHost, token string) map[string]interface{}
 	CloseAllConn()
 	Stop()
 }

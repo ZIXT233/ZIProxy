@@ -77,7 +77,7 @@ func createUser(c *gin.Context) {
 		return
 	}
 
-	manager.SyncUser()
+	manager.SyncUser(&user)
 	c.JSON(201, successR(gin.H{"id": user.ID}))
 }
 
@@ -98,7 +98,7 @@ func updateUser(c *gin.Context) {
 		c.JSON(500, errorR(500, "Failed to update user"))
 		return
 	}
-	manager.SyncUser()
+	manager.SyncUser(dbData)
 	c.JSON(200, successR(gin.H{"id": user.ID}))
 }
 
@@ -144,7 +144,7 @@ func userResetPassword(c *gin.Context) {
 		c.JSON(500, errorR(500, "Failed to update user"))
 		return
 	}
-	manager.SyncUser()
+	manager.SyncUser(user)
 	c.JSON(200, successR(gin.H{"message": "Password reset successfully"}))
 }
 
@@ -221,7 +221,7 @@ func createUserGroup(c *gin.Context) {
 		c.JSON(500, errorR(500, "创建用户组失败"))
 		return
 	}
-	manager.SyncUserGroup()
+	manager.SyncUserGroup(userGroup)
 	c.JSON(201, successR(gin.H{"id": userGroup.ID}))
 }
 
@@ -272,7 +272,7 @@ func updateUserGroup(c *gin.Context) {
 		c.JSON(500, errorR(500, "更新用户组失败"))
 		return
 	}
-	manager.SyncUserGroup()
+	manager.SyncUserGroup(userGroup)
 	c.JSON(200, successR(gin.H{"id": userGroup.ID}))
 }
 
@@ -288,4 +288,25 @@ func deleteUserGroup(c *gin.Context) {
 	}
 	manager.RemoveUserGroup(id)
 	c.JSON(200, successR(gin.H{"message": "用户组删除成功"}))
+}
+
+func updateMyToken(c *gin.Context) {
+	v, _ := c.Get("userId")
+	id := v.(string)
+	token, err := manager.UpdateUserToken(id)
+	if err != nil {
+		c.JSON(500, errorR(500, "更新用户Token失败"))
+		return
+	}
+	c.JSON(200, successR(token))
+}
+func getMyToken(c *gin.Context) {
+	v, _ := c.Get("userId")
+	id := v.(string)
+	user, err := manager.DBM.User.GetByID(id)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取用户失败"))
+		return
+	}
+	c.JSON(200, successR(user.LinkToken))
 }

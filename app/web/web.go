@@ -64,6 +64,8 @@ func StartWeb(config *utils.RootConfig) {
 			common.GET("/proxies/usable-inbounds", getUsableInbounds)
 			common.GET("/dashboard/my-traffic", getMyTraffic)
 			common.GET("/system/info", getSystemInfo)
+			common.GET("/user/my-token", getMyToken)
+			common.PUT("/user/my-token", updateMyToken)
 		}
 		admin := r.Group("/api")
 		admin.Use(adminCheck())

@@ -124,7 +124,7 @@ func createRouteScheme(c *gin.Context) {
 		c.JSON(500, errorR(500, "创建路由方案失败"))
 		return
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": scheme.ID,
 	}))
@@ -160,7 +160,7 @@ func updateRouteScheme(c *gin.Context) {
 		c.JSON(500, errorR(500, "更新路由方案失败"))
 		return
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": scheme.ID,
 	}))
@@ -194,7 +194,7 @@ func toggleRouteSchemeStatus(c *gin.Context) {
 		c.JSON(500, errorR(500, "更新路由方案状态失败"))
 		return
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id":      scheme.ID,
 		"enabled": scheme.Enabled,
@@ -246,7 +246,7 @@ func addRule(c *gin.Context) {
 		return
 	}
 
-	_, err := manager.DBM.RouteScheme.GetByID(schemeId)
+	scheme, err := manager.DBM.RouteScheme.GetByID(schemeId)
 	if err != nil {
 		c.JSON(500, errorR(500, "获取路由方案失败"))
 		return
@@ -275,7 +275,7 @@ func addRule(c *gin.Context) {
 		}
 		manager.DBM.DB.Model(rule).Association("Outbounds").Append(outbound)
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": rule.ID,
 	}))
@@ -288,6 +288,11 @@ func updateRule(c *gin.Context) {
 	ruleIdInt, err := strconv.ParseUint(ruleId, 10, 32)
 	if err != nil {
 		c.JSON(400, errorR(400, "无效的规则ID"))
+		return
+	}
+	scheme, err := manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
 		return
 	}
 
@@ -349,7 +354,7 @@ func updateRule(c *gin.Context) {
 		c.JSON(500, errorR(500, "更新规则失败"))
 		return
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": rule.ID,
 	}))
@@ -362,6 +367,11 @@ func deleteRule(c *gin.Context) {
 	ruleIdInt, err := strconv.ParseUint(ruleId, 10, 32)
 	if err != nil {
 		c.JSON(400, errorR(400, "无效的规则ID"))
+		return
+	}
+	scheme, err := manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
 		return
 	}
 
@@ -380,7 +390,7 @@ func deleteRule(c *gin.Context) {
 		c.JSON(500, errorR(500, "删除规则失败"))
 		return
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"message": "规则删除成功",
 	}))
@@ -397,6 +407,11 @@ func updateRuleOrder(c *gin.Context) {
 		c.JSON(400, errorR(400, "无效的请求数据"))
 		return
 	}
+	scheme, err := manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
+		return
+	}
 
 	// 更新规则优先级
 	for i, ruleId := range req.RuleIds {
@@ -409,7 +424,7 @@ func updateRuleOrder(c *gin.Context) {
 		rule.Priority = uint(i)
 		manager.DBM.Rule.Update(rule)
 	}
-	manager.SyncRouteScheme()
+	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"message": "规则顺序更新成功",
 	}))

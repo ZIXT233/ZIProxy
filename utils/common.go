@@ -1,6 +1,10 @@
 package utils
 
-import "reflect"
+import (
+	"crypto/rand"
+	"encoding/base64"
+	"reflect"
+)
 
 func MergeStruct(dst, src interface{}) {
 	dstValue := reflect.ValueOf(dst).Elem() // 获取 dst 的可修改值
@@ -31,4 +35,16 @@ func isEmptyValue(v reflect.Value) bool {
 	default:
 		return false
 	}
+}
+
+func GenerateBase64RandomString(length int) (string, error) {
+	// 计算需要的随机字节数
+	randomBytes := make([]byte, (length*6+7)/8) // Base64 每 3 字节生成 4 字符
+	if _, err := rand.Read(randomBytes); err != nil {
+		return "", err
+	}
+
+	// 编码为 Base64 并截取指定长度
+	base64Str := base64.RawURLEncoding.EncodeToString(randomBytes)
+	return base64Str[:length], nil
 }

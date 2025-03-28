@@ -79,15 +79,18 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 		return nil, nil, nil, err
 	}
 	var method, URL, address string
-	header := make(map[string]string)
+
 	//split b by '\r\n
 	headLines := strings.Split(string(b[:n]), "\r\n")
+	fmt.Sscanf(headLines[0], "%s%s", &method, &URL)
+	header := make(map[string]string)
 	for _, line := range headLines {
 		pair := strings.SplitN(line, ":", 2)
 		if len(pair) == 2 {
 			header[pair[0]] = strings.Trim(pair[1], "\r\n ")
 		}
 	}
+	header["linkToken"] = strings.Trim(URL, "/ ")
 	userId := authFunc(header)
 	forward := in.config["guestForward"]
 	if forward != nil && userId == "guest" {
@@ -106,7 +109,6 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 		io.Copy(wrappedConn, forwardConn)
 		return nil, nil, nil, fmt.Errorf("auth fail")
 	}
-	fmt.Sscanf(headLines[0], "%s%s", &method, &URL)
 	if method == "CONNECT" {
 		address = URL
 	} else { //否则为 http 协议
@@ -140,18 +142,13 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	return wrappedConn, targetAddr, closeChan, nil
 }
 
-func (in *Inbound) GetLinkConfig(defaultAccessAddr, userId, passwd string) map[string]interface{} {
-	config := make(map[string]interface{})
-	for key, value := range in.config {
-		config[key] = value
-	}
-
+func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	addr := proxy.GetLinkAddr(in, defaultAccessAddr)
-	config["address"] = addr
-	config["url"] = in.config["scheme"].(string) + "://" + addr
-	config["auth"] = map[string]string{
-		"username": userId,
-		"password": passwd,
+	config := map[string]interface{}{
+		"scheme":    in.Scheme(),
+		"address":   addr,
+		"url":       in.config["scheme"].(string) + "://" + in.Addr(),
+		"linkToken": token,
 	}
 	return config
 }

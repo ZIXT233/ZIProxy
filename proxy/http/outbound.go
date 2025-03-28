@@ -51,10 +51,9 @@ func (out *Outbound) CloseAllConn() {
 
 func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, chan struct{}, error) {
 	var authHead string
-	if out.config["auth"] != nil {
-		auth := out.config["auth"].(map[string]interface{})
-		authHead = fmt.Sprintf("username:%s\r\npassword:%s\r\n",
-			auth["username"].(string), auth["password"].(string))
+	if out.config["linkToken"] != nil {
+		token := out.config["linkToken"].(string)
+		authHead = fmt.Sprintf("linkToken:%s\r\n", token)
 	}
 	_, err := fmt.Fprintf(underlay, "CONNECT %s HTTP/1.1\r\n"+
 		"%s"+

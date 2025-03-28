@@ -51,7 +51,7 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	return underlay, nil, closeChan, nil
 }
 
-func (in *Inbound) GetLinkConfig(defaultAccessAddr, userId, passwd string) map[string]interface{} {
+func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	config := make(map[string]interface{})
 	for key, value := range in.config {
 		config[key] = value

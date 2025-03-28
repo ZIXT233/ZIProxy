@@ -129,29 +129,35 @@ func loadDefaultData(dbm *db.RepoManager) {
 	dbm.DB.Model(guestGroup).Association("AvailInbounds").Append(inboundProxy1)
 
 	// 创建管理员用户
+	token, _ := utils.GenerateBase64RandomString(16)
 	admin := &db.User{
 		ID:          "admin",
 		Email:       "admin@example.com",
 		Password:    utils.SHA256([]byte("admin")),
 		Enabled:     true,
+		LinkToken:   token,
 		UserGroupID: adminGroup.ID,
 	}
 	dbm.User.Create(admin)
 
 	// 创建普通用户
+	token, _ = utils.GenerateBase64RandomString(16)
 	user := &db.User{
 		ID:          "user",
 		Email:       "user@example.com",
 		Password:    utils.SHA256([]byte("user")),
 		Enabled:     true,
+		LinkToken:   token,
 		UserGroupID: userGroup.ID,
 	}
 	dbm.User.Create(user)
+	token, _ = utils.GenerateBase64RandomString(16)
 	guest := &db.User{
 		ID:          "guest",
 		Email:       "guest@guest.com",
 		Password:    utils.SHA256([]byte("guest")),
 		Enabled:     true,
+		LinkToken:   token,
 		UserGroupID: guestGroup.ID,
 	}
 	dbm.User.Create(guest)

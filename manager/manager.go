@@ -18,6 +18,7 @@ var (
 	RouteSchemeMap   sync.Map
 	UserGroupMap     sync.Map
 	UserMap          sync.Map
+	UserTokenMap     sync.Map
 	DBM              *db.RepoManager
 	StatisticDBM     *db.StatisticRepoManager
 	ActiveUserLinkMu sync.Mutex
@@ -25,18 +26,6 @@ var (
 	Version          string
 	StartUpTime      time.Time
 )
-
-func SyncBounds() error {
-	inboundData, _, _ := DBM.ProxyData.List(db.InDir, 0, db.MAX)
-	outboundData, _, _ := DBM.ProxyData.List(db.OutDir, 0, db.MAX)
-	for _, d := range inboundData {
-		SyncInbound(&d)
-	}
-	for _, d := range outboundData {
-		SyncOutbound(&d)
-	}
-	return nil
-}
 
 func SyncInbound(d *db.ProxyData) {
 	stopInboundProc(d.ID) //will close old conn
@@ -74,30 +63,20 @@ func RemoveOutbound(id string) {
 	}
 	OutboundMap.Delete(id)
 }
-func SyncRouteScheme() {
-	routeSchemes, _, _ := DBM.RouteScheme.List(0, db.MAX)
-	for _, scheme := range routeSchemes {
-		RouteSchemeMap.Store(scheme.ID, &scheme)
-	}
+func SyncRouteScheme(d *db.RouteScheme) {
+	RouteSchemeMap.Store(d.ID, d)
 }
 func RemoveRouteScheme(id string) {
 	RouteSchemeMap.Delete(id)
 }
-func SyncUser() {
-	users, _, _ := DBM.User.List(0, db.MAX)
-
-	for _, user := range users {
-		UserMap.Store(user.ID, &user)
-	}
+func SyncUser(d *db.User) {
+	UserMap.Store(d.ID, d)
 }
 func RemoveUser(id string) {
 	UserMap.Delete(id)
 }
-func SyncUserGroup() {
-	userGroups, _, _ := DBM.UserGroup.List(0, db.MAX)
-	for _, group := range userGroups {
-		UserGroupMap.Store(group.ID, &group)
-	}
+func SyncUserGroup(d *db.UserGroup) {
+	UserGroupMap.Store(d.ID, d)
 }
 func RemoveUserGroup(id string) {
 	UserGroupMap.Delete(id)
@@ -138,6 +117,31 @@ func TrafficCleanCron() {
 		}
 	}()
 }
+func UpdateUserToken(id string) (string, error) {
+	user, err := DBM.User.GetByID(id)
+	if err != nil {
+		log.Printf("Failed to fetch user %s err: %v", id, err)
+		return "", err
+	}
+	if _, exists := UserTokenMap.Load(id); exists {
+		UserTokenMap.Delete(id)
+	}
+	var token string
+	for {
+		token, _ = utils.GenerateBase64RandomString(16)
+		if _, exists := UserTokenMap.Load(token); !exists {
+			break
+		}
+	}
+	user.LinkToken = token
+	if err := DBM.User.Update(user); err != nil {
+		log.Printf("Failed to update user %s err: %v", id, err)
+		return "", err
+	}
+	UserTokenMap.Store(token, user)
+	SyncUser(user)
+	return token, nil
+}
 func Start(config *utils.RootConfig, version string) {
 	var err error
 	var isNewDB bool
@@ -156,10 +160,27 @@ func Start(config *utils.RootConfig, version string) {
 	initRouter(config.StaticPath)
 	Version = version
 
-	SyncUser()
-	SyncUserGroup()
-	SyncRouteScheme()
-	SyncBounds()
+	users, _, _ := DBM.User.List(0, db.MAX)
+	userGroups, _, _ := DBM.UserGroup.List(0, db.MAX)
+	routeSchemes, _, _ := DBM.RouteScheme.List(0, db.MAX)
+	inboundData, _, _ := DBM.ProxyData.List(db.InDir, 0, db.MAX)
+	outboundData, _, _ := DBM.ProxyData.List(db.OutDir, 0, db.MAX)
+
+	for _, d := range users {
+		SyncUser(&d)
+	}
+	for _, d := range userGroups {
+		SyncUserGroup(&d)
+	}
+	for _, d := range routeSchemes {
+		SyncRouteScheme(&d)
+	}
+	for _, d := range inboundData {
+		SyncInbound(&d)
+	}
+	for _, d := range outboundData {
+		SyncOutbound(&d)
+	}
 	TrafficCleanCron()
 	StartUpTime = time.Now().Truncate(time.Second)
 }

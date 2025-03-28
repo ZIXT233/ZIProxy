@@ -18,6 +18,7 @@ type SystemInfo struct {
 type User struct {
 	ID          string    `gorm:"primaryKey"`
 	Password    string    `gorm:"not null"`
+	LinkToken   string    //可选，用于代理url token
 	Email       string    `gorm:"uniqueIndex;not null"`
 	Enabled     bool      `gorm:"default:true"`
 	UserGroupID string    `gorm:"not null"`
