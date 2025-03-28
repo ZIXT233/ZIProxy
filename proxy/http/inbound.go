@@ -90,7 +90,10 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 			header[pair[0]] = strings.Trim(pair[1], "\r\n ")
 		}
 	}
-	header["linkToken"] = strings.Trim(URL, "/ ")
+	if header["linkToken"] == "" {
+		header["linkToken"] = strings.Trim(URL, "/ ")
+	}
+
 	userId := authFunc(header)
 	forward := in.config["guestForward"]
 	if forward != nil && userId == "guest" {

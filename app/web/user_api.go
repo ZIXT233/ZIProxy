@@ -257,6 +257,7 @@ func updateUserGroup(c *gin.Context) {
 	if req.InboundIds != nil {
 		// 清除现有关联
 		manager.DBM.UserGroup.ClearInbounds(userGroup.ID)
+		userGroup.AvailInbounds = make([]db.ProxyData, 0, len(*req.InboundIds))
 
 		// 添加新关联
 		for _, inboundId := range *req.InboundIds {
@@ -264,7 +265,8 @@ func updateUserGroup(c *gin.Context) {
 			if err != nil {
 				continue
 			}
-			manager.DBM.DB.Model(userGroup).Association("AvailInbounds").Append(inbound)
+			userGroup.AvailInbounds = append(userGroup.AvailInbounds, *inbound)
+			//manager.DBM.DB.Model(userGroup).Association("AvailInbounds").Append(inbound)
 		}
 	}
 
