@@ -147,7 +147,7 @@ func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]int
 	config := map[string]interface{}{
 		"scheme":    in.Scheme(),
 		"address":   addr,
-		"url":       in.config["scheme"].(string) + "://" + in.Addr(),
+		"url":       in.config["scheme"].(string) + "://" + addr,
 		"linkToken": token,
 	}
 	return config
