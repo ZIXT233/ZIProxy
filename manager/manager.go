@@ -71,6 +71,7 @@ func RemoveRouteScheme(id string) {
 }
 func SyncUser(d *db.User) {
 	UserMap.Store(d.ID, d)
+	UserTokenMap.Store(d.LinkToken, d)
 }
 func RemoveUser(id string) {
 	UserMap.Delete(id)
@@ -138,7 +139,6 @@ func UpdateUserToken(id string) (string, error) {
 		log.Printf("Failed to update user %s err: %v", id, err)
 		return "", err
 	}
-	UserTokenMap.Store(token, user)
 	SyncUser(user)
 	return token, nil
 }
