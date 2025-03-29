@@ -28,32 +28,25 @@ func subActiveUserLink(userId string) {
 	ActiveUserLinkMu.Unlock()
 }
 
-func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
-	stopChan := make(chan struct{})
+func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 	listener, err := net.Listen("tcp", inbound.Addr())
 	if err != nil {
 		log.Println(err)
 		return nil, err
 	}
 	go func() {
-		acceptEnd := false
-		go func() {
-			<-stopChan
-			acceptEnd = true
-			listener.Close()
-			inbound.Stop()
-			delete(InboundProcStopChanMap, inbound.Name())
-		}()
 		//创建服务连接
 		for {
 			inConn, err := listener.Accept()
 			if err != nil {
-				if acceptEnd {
+				if err == net.ErrClosed {
 					log.Printf("Inbound %s process end", inbound.Name())
+					inbound.Stop()
+					break
 				} else {
 					log.Printf("Inbound %s accept %s fail", inbound.Name(), inConn.RemoteAddr().String())
+					continue
 				}
-				break
 			}
 			//拉一个协程处理连接
 			go func() {
@@ -100,6 +93,7 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 
 				commonCloseChan := make(chan struct{})
 				log.Printf("Start %s@%s ---> %s ---> %s\t\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr, runtime.NumGoroutine())
+				//用于监听关闭信号的协程
 				go func() {
 					var reason string
 					select {
@@ -132,30 +126,31 @@ func InboundProcess(inbound proxy.Inbound) (chan struct{}, error) {
 			}()
 		}
 	}()
-	return stopChan, nil
+	return listener, nil
 }
 
-var InboundProcStopChanMap = make(map[string]chan struct{})
+var InboundProcListenerMap = make(map[string]net.Listener)
 
 func attachInboundProc(id string) (err error) {
 	stopInboundProc(id)
 	inbound, ok := InboundMap.Load(id)
 	if ok {
-		InboundProcStopChanMap[id], err = InboundProcess(inbound.(proxy.Inbound))
+		listener, err := InboundProcess(inbound.(proxy.Inbound))
 		if err != nil {
-			delete(InboundProcStopChanMap, id)
+			return err
 		}
+		InboundProcListenerMap[id] = listener
 	}
 	return err
 }
 func stopInboundProc(id string) {
-	stopChan, ok := InboundProcStopChanMap[id]
-	if ok {
-		stopChan <- struct{}{}
+	listener, alive := InboundProcListenerMap[id]
+	if alive {
+		listener.Close()
 		for {
-			_, alive := InboundProcStopChanMap[id]
+			_, alive = InboundProcListenerMap[id]
 			if !alive {
-				break
+				return
 			}
 			time.Sleep(time.Millisecond * 10)
 		}
@@ -163,6 +158,6 @@ func stopInboundProc(id string) {
 }
 
 func IsInboundProcRunning(id string) (running bool) {
-	_, ok := InboundProcStopChanMap[id]
+	_, ok := InboundProcListenerMap[id]
 	return ok
 }

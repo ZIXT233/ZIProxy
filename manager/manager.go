@@ -142,6 +142,7 @@ func UpdateUserToken(id string) (string, error) {
 	SyncUser(user)
 	return token, nil
 }
+
 func Start(config *utils.RootConfig, version string) {
 	var err error
 	var isNewDB bool
@@ -183,4 +184,5 @@ func Start(config *utils.RootConfig, version string) {
 	}
 	TrafficCleanCron()
 	StartUpTime = time.Now().Truncate(time.Second)
+	LaunchRealTimeStatistic()
 }

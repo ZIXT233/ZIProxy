@@ -275,6 +275,11 @@ func addRule(c *gin.Context) {
 		}
 		manager.DBM.DB.Model(rule).Association("Outbounds").Append(outbound)
 	}
+	scheme, err = manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
+		return
+	}
 	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": rule.ID,
@@ -354,6 +359,11 @@ func updateRule(c *gin.Context) {
 		c.JSON(500, errorR(500, "更新规则失败"))
 		return
 	}
+	scheme, err = manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
+		return
+	}
 	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"id": rule.ID,
@@ -390,6 +400,11 @@ func deleteRule(c *gin.Context) {
 		c.JSON(500, errorR(500, "删除规则失败"))
 		return
 	}
+	scheme, err = manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
+		return
+	}
 	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{
 		"message": "规则删除成功",
@@ -423,6 +438,11 @@ func updateRuleOrder(c *gin.Context) {
 
 		rule.Priority = uint(i)
 		manager.DBM.Rule.Update(rule)
+	}
+	scheme, err = manager.DBM.RouteScheme.GetByID(schemeId)
+	if err != nil {
+		c.JSON(500, errorR(500, "获取路由方案失败"))
+		return
 	}
 	manager.SyncRouteScheme(scheme)
 	c.JSON(200, successR(gin.H{

@@ -58,16 +58,11 @@ func getTrafficHistory(c *gin.Context) {
 }
 
 func getTrafficStatus(c *gin.Context) {
-	today := time.Now().Truncate(time.Hour * 24)
-	totalBytesIn, totalBytesOut, err := manager.StatisticDBM.Traffic.GetTrafficStats(today, time.Now())
-	if err != nil {
-		c.JSON(500, errorR(500, "获取流量统计失败"))
-		return
-	}
+	totalBytesIn, totalBytesOut, total := manager.GetRealTimeTraffic()
 	c.JSON(200, successR(gin.H{
 		"download": totalBytesIn,
 		"upload":   totalBytesOut,
-		"total":    totalBytesIn + totalBytesOut,
+		"total":    total,
 	}))
 }
 
