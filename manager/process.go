@@ -83,6 +83,8 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 					log.Println("dial out conn ", err)
 					return
 				}
+
+				outConn = createConnWithTimeout(outConn, time.Second*10)
 				defer outConn.Close()
 				wrappedOutConn, outCloseChan, err := outbound.WrapConn(outConn, targetAddr)
 				defer outbound.UnregCloseChan(outCloseChan)
@@ -104,7 +106,11 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 						reason = "inbound closed"
 						inConn.Close()
 					case <-commonCloseChan:
-						reason = "transport finished"
+						if outConn.(*ConnWithTimeout).IsTimeout {
+							reason = "no data transfer in 10s"
+						} else {
+							reason = "transport finished"
+						}
 					}
 					log.Printf("End   %s@%s ---> %s ---> %s\t\tdue to %s\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr, reason, runtime.NumGoroutine())
 				}()
@@ -160,4 +166,60 @@ func stopInboundProc(id string) {
 func IsInboundProcRunning(id string) (running bool) {
 	_, ok := InboundProcListenerMap[id]
 	return ok
+}
+
+type ConnWithTimeout struct {
+	net.Conn
+	lastActiveTime time.Time
+	nowTime        time.Time
+	timeout        time.Duration
+	IsTimeout      bool
+	tickerStop     chan struct{}
+}
+
+func createConnWithTimeout(conn net.Conn, timeout time.Duration) *ConnWithTimeout {
+	c := &ConnWithTimeout{
+		Conn:           conn,
+		lastActiveTime: time.Now(),
+		nowTime:        time.Now(),
+		timeout:        timeout,
+		IsTimeout:      false,
+		tickerStop:     make(chan struct{}),
+	}
+	go func() {
+		ticker := time.NewTicker(1 * time.Second)
+		defer ticker.Stop()
+		for {
+			select {
+			case c.nowTime = <-ticker.C:
+				if c.nowTime.Sub(c.lastActiveTime) > c.timeout {
+					c.Close()
+					c.IsTimeout = true
+					return
+				}
+			case <-c.tickerStop:
+				return
+			}
+		}
+	}()
+	return c
+}
+func (c *ConnWithTimeout) Read(b []byte) (n int, err error) {
+	n, err = c.Conn.Read(b)
+	c.lastActiveTime = c.nowTime
+
+	return n, err
+}
+func (c *ConnWithTimeout) Write(b []byte) (n int, err error) {
+	n, err = c.Conn.Write(b)
+	c.lastActiveTime = c.nowTime
+	return n, err
+}
+
+func (c *ConnWithTimeout) Close() error {
+	select {
+	case c.tickerStop <- struct{}{}:
+	default:
+	}
+	return c.Conn.Close()
 }
