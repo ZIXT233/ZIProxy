@@ -32,7 +32,7 @@ jobs:
     - name: Build
       run: |
         mkdir -p dist/${{ matrix.goos }}_${{ matrix.goarch }}
-        GOOS=${{ env.GOOS }} GOARCH=${{ env.GOARCH }} go build -o dist/${{ matrix.goos }}_${{ matrix.goarch }}/ziproxy${{ env.EXTENSION }} ./...
+        GOOS=${{ env.GOOS }} GOARCH=${{ env.GOARCH }} go build -o dist/${{ matrix.goos }}_${{ matrix.goarch }}/ziproxy${{ env.EXTENSION }} ./
 
     - name: Add config.json and static files
       run: |
