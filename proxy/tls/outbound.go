@@ -2,8 +2,10 @@ package tls
 
 import (
 	stdtls "crypto/tls"
+	"fmt"
 	"io"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/ZIXT233/ziproxy/db"
@@ -18,6 +20,7 @@ type Outbound struct {
 	tlsConfig    *stdtls.Config
 	upper        proxy.Outbound
 	closeChanSet sync.Map
+	verifyByPsk  string
 }
 
 func init() {
@@ -44,11 +47,15 @@ func TlsOutboundCreator(proxyData *db.ProxyData) (proxy.Outbound, error) {
 	} else {
 		out.addr = config["address"].(string)
 	}
-
 	sni, _, _ := net.SplitHostPort(out.addr)
+	if v := config["verifyByPsk"]; v != nil {
+		out.verifyByPsk = v.(string)
+	} else {
+		out.verifyByPsk = ""
+	}
 	out.tlsConfig = &stdtls.Config{
 		ServerName:         sni,
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: out.verifyByPsk != "",
 	}
 	return out, nil
 }
@@ -72,6 +79,20 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.R
 	err := tlsConn.Handshake()
 	if err != nil {
 		return nil, nil, err
+	}
+	if out.verifyByPsk != "" {
+		buf := make([]byte, 2048)
+		pskLen := len(out.verifyByPsk)
+		_, err := tlsConn.Read(buf)
+		if err != nil {
+			return nil, nil, err
+		}
+		if string(buf[:pskLen]) != out.verifyByPsk {
+			return nil, nil, fmt.Errorf("invalid psk")
+		}
+		mlen, _ := utils.CryptoRandomInRange(100, 200)
+		mess := strings.Repeat("233", mlen/3)
+		_, err = tlsConn.Write([]byte(mess + "E"))
 	}
 	if out.upper != nil {
 		return out.upper.WrapConn(tlsConn, target)

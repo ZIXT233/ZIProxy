@@ -5,6 +5,7 @@ import (
 	"io"
 	"log"
 	"net"
+	"strings"
 	"sync"
 
 	"github.com/ZIXT233/ziproxy/db"
@@ -19,6 +20,7 @@ type Inbound struct {
 	tlsConfig    *stdtls.Config
 	upper        proxy.Inbound
 	closeChanSet sync.Map
+	verifyByPsk  string
 }
 
 func (in *Inbound) Name() string                   { return in.name }
@@ -47,8 +49,13 @@ func TlsInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
 		name:   proxyData.ID,
 		config: config,
 	}
+	if v := config["verifyByPsk"]; v != nil {
+		in.verifyByPsk = v.(string)
+	} else {
+		in.verifyByPsk = ""
+	}
 	in.tlsConfig = &stdtls.Config{
-		InsecureSkipVerify: false,
+		InsecureSkipVerify: in.verifyByPsk != "",
 		Certificates:       []stdtls.Certificate{cert},
 	}
 
@@ -89,6 +96,19 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	if err != nil {
 		return nil, nil, nil, err
 	}
+	if in.verifyByPsk != "" {
+		mlen, _ := utils.CryptoRandomInRange(900, 1400)
+		mess := strings.Repeat("233", mlen/3)
+		_, err = tlsConn.Write([]byte(in.verifyByPsk + mess + "E"))
+		if err != nil {
+			return nil, nil, nil, err
+		}
+		buf := make([]byte, 512)
+		_, err = tlsConn.Read(buf)
+		if err != nil {
+			return nil, nil, nil, err
+		}
+	}
 	if in.upper != nil {
 		return in.upper.WrapConn(tlsConn, authFunc)
 	} else {
@@ -101,6 +121,7 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]interface{} {
 	config := make(map[string]interface{})
 	config["scheme"] = scheme
+	config["verifyByPsk"] = in.verifyByPsk
 	if in.upper != nil {
 		upperConfig := in.upper.GetLinkConfig(defaultAccessAddr, token)
 		config["upper"] = upperConfig

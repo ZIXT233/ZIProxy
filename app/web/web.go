@@ -1,12 +1,11 @@
 package web
 
 import (
+	"github.com/ZIXT233/ziproxy/utils"
+	"github.com/gin-gonic/gin"
 	"log"
 	"net/http"
 	"time"
-
-	"github.com/ZIXT233/ziproxy/utils"
-	"github.com/gin-gonic/gin"
 )
 
 // JWT密钥和过期时间

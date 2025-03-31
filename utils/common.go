@@ -3,6 +3,8 @@ package utils
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"fmt"
+	"math/big"
 	"reflect"
 )
 
@@ -47,4 +49,16 @@ func GenerateBase64RandomString(length int) (string, error) {
 	// 编码为 Base64 并截取指定长度
 	base64Str := base64.RawURLEncoding.EncodeToString(randomBytes)
 	return base64Str[:length], nil
+}
+
+func CryptoRandomInRange(min, max int) (int, error) {
+	if min > max {
+		return 0, fmt.Errorf("invalid range: min (%d) cannot be greater than max (%d)", min, max)
+	}
+	rangeSize := big.NewInt(int64(max - min + 1))
+	randomNum, err := rand.Int(rand.Reader, rangeSize) // 生成 [0, rangeSize) 的随机数
+	if err != nil {
+		return 0, err
+	}
+	return int(randomNum.Int64()) + min, nil // 将随机数映射到 [min, max]
 }

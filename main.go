@@ -2,10 +2,13 @@ package main
 
 import (
 	"flag"
+	"github.com/pkg/browser"
 	"log"
+	"net"
 	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/ZIXT233/ziproxy/app/web"
 	"github.com/ZIXT233/ziproxy/manager"
@@ -32,6 +35,9 @@ func main() {
 	}
 	manager.Start(config, Version)
 	web.StartWeb(config)
+	time.Sleep(100 * time.Millisecond)
+	_, port, _ := net.SplitHostPort(config.WebAddress)
+	browser.OpenURL("http://" + "localhost:" + port)
 	osSignals := make(chan os.Signal, 1)
 	signal.Notify(osSignals, os.Interrupt, os.Kill, syscall.SIGTERM)
 	<-osSignals

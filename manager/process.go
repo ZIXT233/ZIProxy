@@ -1,6 +1,7 @@
 package manager
 
 import (
+	"errors"
 	"io"
 	"log"
 	"net"
@@ -35,16 +36,17 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 		return nil, err
 	}
 	go func() {
+		log.Printf("Inbound %s process listening on %s", inbound.Name(), listener.Addr())
 		//创建服务连接
 		for {
 			inConn, err := listener.Accept()
 			if err != nil {
-				if err == net.ErrClosed {
+				if errors.Is(err, net.ErrClosed) {
 					log.Printf("Inbound %s process end", inbound.Name())
 					inbound.Stop()
 					break
 				} else {
-					log.Printf("Inbound %s accept %s fail", inbound.Name(), inConn.RemoteAddr().String())
+					log.Printf("Inbound %s accept fail", inbound.Name())
 					continue
 				}
 			}
@@ -153,13 +155,8 @@ func stopInboundProc(id string) {
 	listener, alive := InboundProcListenerMap[id]
 	if alive {
 		listener.Close()
-		for {
-			_, alive = InboundProcListenerMap[id]
-			if !alive {
-				return
-			}
-			time.Sleep(time.Millisecond * 10)
-		}
+		delete(InboundProcListenerMap, id)
+		time.Sleep(time.Millisecond * 10)
 	}
 }
 
