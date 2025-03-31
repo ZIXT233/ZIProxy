@@ -65,7 +65,7 @@ func CryptoRandomInRange(min, max int) (int, error) {
 }
 
 func ReadUtil(reader io.Reader, end byte) ([]byte, error) {
-	buf := make([]byte, 1024)
+	buf := make([]byte, 0)
 	c := make([]byte, 1)
 	for {
 		_, err := reader.Read(c)
