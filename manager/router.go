@@ -64,10 +64,6 @@ func matchIP(pattern string, ip net.IP) bool {
 	if pattern == "*" {
 		return true
 	}
-	// 如果pattern是IP地址，则直接比较
-	if strings.Contains(pattern, ".") {
-		return pattern == ip.String()
-	}
 	// 如果pattern是CIDR，则比较IP地址和CIDR
 	if strings.Contains(pattern, "/") {
 		_, cidr, err := net.ParseCIDR(pattern)
@@ -75,6 +71,10 @@ func matchIP(pattern string, ip net.IP) bool {
 			return false
 		}
 		return cidr.Contains(ip)
+	}
+	// 如果pattern是IP地址，则直接比较
+	if strings.Contains(pattern, ".") {
+		return pattern == ip.String()
 	}
 	return false
 }
