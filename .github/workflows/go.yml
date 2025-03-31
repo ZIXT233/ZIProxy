@@ -47,4 +47,4 @@ jobs:
       uses: actions/upload-artifact@v4
       with:
         name: ziproxy_${{ matrix.goos }}_${{ matrix.goarch }}
-        path: dist/ziproxy_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz
+        path: dist/${{ matrix.goos }}_${{ matrix.goarch }} 
