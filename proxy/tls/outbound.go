@@ -81,18 +81,18 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.R
 		return nil, nil, err
 	}
 	if out.verifyByPsk != "" {
-		buf := make([]byte, 2048)
-		pskLen := len(out.verifyByPsk)
-		_, err := tlsConn.Read(buf)
+		buf, err := utils.ReadUtil(tlsConn, '\n')
 		if err != nil {
 			return nil, nil, err
 		}
+		pskLen := len(out.verifyByPsk)
 		if string(buf[:pskLen]) != out.verifyByPsk {
 			return nil, nil, fmt.Errorf("invalid psk")
 		}
+		utils.ReadUtil(tlsConn, '\n')
 		mlen, _ := utils.CryptoRandomInRange(100, 200)
 		mess := strings.Repeat("233", mlen/3)
-		_, err = tlsConn.Write([]byte(mess + "E"))
+		_, err = tlsConn.Write([]byte(mess + "\n"))
 	}
 	if out.upper != nil {
 		return out.upper.WrapConn(tlsConn, target)

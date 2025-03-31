@@ -37,6 +37,7 @@ func init() {
 }
 func TlsInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
 	config, _ := utils.UnmarshalConfig(proxyData.Config)
+
 	certFile := config["cert"].(string)
 	keyFile := config["key"].(string)
 	cert, err := stdtls.LoadX509KeyPair(certFile, keyFile)
@@ -99,15 +100,11 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	if in.verifyByPsk != "" {
 		mlen, _ := utils.CryptoRandomInRange(900, 1400)
 		mess := strings.Repeat("233", mlen/3)
-		_, err = tlsConn.Write([]byte(in.verifyByPsk + mess + "E"))
+		_, err = tlsConn.Write([]byte(in.verifyByPsk + "\n" + mess + "\n"))
 		if err != nil {
 			return nil, nil, nil, err
 		}
-		buf := make([]byte, 512)
-		_, err = tlsConn.Read(buf)
-		if err != nil {
-			return nil, nil, nil, err
-		}
+		utils.ReadUtil(tlsConn, '\n')
 	}
 	if in.upper != nil {
 		return in.upper.WrapConn(tlsConn, authFunc)

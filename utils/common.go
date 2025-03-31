@@ -4,6 +4,7 @@ import (
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"io"
 	"math/big"
 	"reflect"
 )
@@ -61,4 +62,20 @@ func CryptoRandomInRange(min, max int) (int, error) {
 		return 0, err
 	}
 	return int(randomNum.Int64()) + min, nil // 将随机数映射到 [min, max]
+}
+
+func ReadUtil(reader io.Reader, end byte) ([]byte, error) {
+	buf := make([]byte, 1024)
+	c := make([]byte, 1)
+	for {
+		_, err := reader.Read(c)
+		if err != nil {
+			return buf, err
+		}
+		buf = append(buf, c...)
+		if c[0] == end {
+			break
+		}
+	}
+	return buf, nil
 }
