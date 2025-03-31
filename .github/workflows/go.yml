@@ -1,4 +1,4 @@
-name: ZIProxy Build
+name: Go Cross-Compile with Config and Static Files
 
 on:
   push:
@@ -12,9 +12,8 @@ jobs:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        goos: [linux, windows, darwin]
-        goarch: [amd64, arm64]
-
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        goarch: [amd64, arm64] # 支持多种架构
     steps:
     - uses: actions/checkout@v4
 
@@ -23,28 +22,29 @@ jobs:
       with:
         go-version: '1.23.5'
 
+    - name: Install MinGW 
+      if: matrix.os=='windows-latest'
+      uses: egor-tensin/setup-mingw@v2  
+          
     - name: Configure environment for cross-compilation
       run: |
-        echo "GOOS=${{ matrix.goos }}" >> $GITHUB_ENV
+        echo "GOOS=${{ matrix.os == 'windows-latest' && 'windows' || matrix.os == 'macos-latest' && 'darwin' || 'linux' }}" >> $GITHUB_ENV
         echo "GOARCH=${{ matrix.goarch }}" >> $GITHUB_ENV
-        echo "EXTENSION=${{ matrix.goos == 'windows' && '.exe' || '' }}" >> $GITHUB_ENV
+        echo "EXTENSION=${{ matrix.os == 'windows-latest' && '.exe' || '' }}" >> $GITHUB_ENV
 
     - name: Build
       run: |
-        mkdir -p dist/${{ matrix.goos }}_${{ matrix.goarch }}
-        GOOS=${{ env.GOOS }} GOARCH=${{ env.GOARCH }} CGO_ENABLED=1 go build -o dist/${{ matrix.goos }}_${{ matrix.goarch }}/ziproxy${{ env.EXTENSION }} ./
+        CGO_ENABLED=1 go build -o ziproxy_${{ env.GOOS }}_${{ env.GOARCH }}${{ env.EXTENSION }} ./.
 
-    - name: Add config.json and static files
+    - name: Prepare artifacts directory
       run: |
-        cp config.json dist/${{ matrix.goos }}_${{ matrix.goarch }}/
-        cp -r static dist/${{ matrix.goos }}_${{ matrix.goarch }}/
-
-    - name: Archive build artifacts
-      run: |
-        tar -czf dist/ziproxy_${{ matrix.goos }}_${{ matrix.goarch }}.tar.gz -C dist/${{ matrix.goos }}_${{ matrix.goarch }} .
-
+        mkdir -p dist
+        mv ziproxy_${{ env.GOOS }}_${{ env.GOARCH }}${{ env.EXTENSION }} dist/
+        cp config.json dist/
+        cp -r static dist/ 
+        
     - name: Upload build artifacts
       uses: actions/upload-artifact@v4
       with:
-        name: ziproxy_${{ matrix.goos }}_${{ matrix.goarch }}
-        path: dist/${{ matrix.goos }}_${{ matrix.goarch }} 
+        name: ziproxy_${{ env.GOOS }}_${{ env.GOARCH }}
+        path: dist/ziproxy_${{ env.GOOS }}_${{ env.GOARCH }}
