@@ -2,13 +2,12 @@ package tls
 
 import (
 	stdtls "crypto/tls"
-	"io"
+	"fmt"
 	"log"
 	"net"
 	"strings"
 	"sync"
 
-	"github.com/ZIXT233/ziproxy/db"
 	"github.com/ZIXT233/ziproxy/proxy"
 	"github.com/ZIXT233/ziproxy/utils"
 )
@@ -27,6 +26,12 @@ func (in *Inbound) Name() string                   { return in.name }
 func (in *Inbound) Scheme() string                 { return scheme }
 func (in *Inbound) Addr() string                   { return in.addr }
 func (in *Inbound) Config() map[string]interface{} { return in.config }
+func (in *Inbound) SetAddr(addr string) {
+	in.addr = addr
+}
+func (in *Inbound) SetUpper(upper proxy.Inbound) {
+	in.upper = upper
+}
 func (in *Inbound) Stop() {
 	in.CloseAllConn()
 	return
@@ -35,19 +40,21 @@ func (in *Inbound) Stop() {
 func init() {
 	proxy.RegisterInbound(scheme, TlsInboundCreator)
 }
-func TlsInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
-	config, _ := utils.UnmarshalConfig(proxyData.Config)
-
+func TlsInboundCreator(name string, config map[string]interface{}) (proxy.Inbound, error) {
 	certFile := config["cert"].(string)
 	keyFile := config["key"].(string)
 	cert, err := stdtls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
-		log.Printf("%s tls.LoadX509KeyPair err: %v", proxyData.ID, err)
+		log.Printf("%s tls.LoadX509KeyPair err: %v", name, err)
 		return nil, err
 	}
-
+	addr, ok := config["address"].(string)
+	if !ok {
+		return nil, fmt.Errorf("address is required")
+	}
 	in := &Inbound{
-		name:   proxyData.ID,
+		addr:   addr,
+		name:   name,
 		config: config,
 	}
 	if v := config["verifyByPsk"]; v != nil {
@@ -60,21 +67,8 @@ func TlsInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
 		Certificates:       []stdtls.Certificate{cert},
 	}
 
-	if up, ok := config["upper"]; ok {
-		upperConfig := utils.MarshalConfig(up.(map[string]interface{}))
-		upper, err := proxy.InboundFromConfig(&db.ProxyData{
-			ID:     proxyData.ID,
-			Config: upperConfig,
-		})
-		if err != nil {
-			return nil, err
-		}
-		in.upper = upper
-		in.addr = upper.Addr()
-	} else {
-		in.addr = config["address"].(string)
-	}
-	return in, nil
+	_, err = proxy.UpperInboundCreate(in, config)
+	return in, err
 }
 
 func (in *Inbound) UnregCloseChan(closeChan chan struct{}) {
@@ -91,7 +85,7 @@ func (in *Inbound) CloseAllConn() {
 		proxy.CloseAllConn(&in.closeChanSet)
 	}
 }
-func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (io.ReadWriter, *proxy.TargetAddr, chan struct{}, error) {
+func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (net.Conn, *proxy.TargetAddr, chan struct{}, error) {
 	tlsConn := stdtls.Server(underlay, in.tlsConfig)
 	err := tlsConn.Handshake()
 	if err != nil {

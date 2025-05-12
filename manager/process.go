@@ -60,7 +60,7 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 					return
 				}
 
-				outboundName := RouteOutbound(targetAddr)
+				outboundName := RouteOutbound(targetAddr, inbound.Name())
 
 				val, ok := OutboundMap.Load(outboundName)
 				if !ok {
@@ -86,7 +86,7 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 					return
 				}
 
-				outConn = createConnWithTimeout(outConn, time.Second*10)
+				outConn = createConnWithTimeout(outConn, time.Second*100)
 				defer outConn.Close()
 				wrappedOutConn, outCloseChan, err := outbound.WrapConn(outConn, targetAddr)
 				defer outbound.UnregCloseChan(outCloseChan)
@@ -103,10 +103,8 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 					select {
 					case <-outCloseChan:
 						reason = "outbound closed"
-						outConn.Close()
 					case <-inCloseChan:
 						reason = "inbound closed"
-						inConn.Close()
 					case <-commonCloseChan:
 						if outConn.(*ConnWithTimeout).IsTimeout {
 							reason = "no data transfer in 10s"
@@ -114,14 +112,36 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 							reason = "transport finished"
 						}
 					}
+					inConn.Close()
+					outConn.Close()
 					log.Printf("End   %s@%s ---> %s ---> %s\t\tdue to %s\tNow Goroutine:%d", targetAddr.UserId, inbound.Name(), outbound.Name(), targetAddr, reason, runtime.NumGoroutine())
 				}()
 
 				statisticOutConn := StatisticWrap(wrappedOutConn)
 				addActiveUserLink(targetAddr.UserId)
 				{
-					go io.Copy(statisticOutConn, wrappedInConn)
-					io.Copy(wrappedInConn, statisticOutConn)
+					tmp, ok := inbound.Config()["use_http_cache"]
+					use_http_cache := false
+					if ok {
+						use_http_cache, _ = tmp.(bool)
+					}
+
+					if use_http_cache {
+						decryptInConn, isTLS, err := TLS_MITM_to_client(wrappedInConn)
+						if err != nil {
+							log.Println("TLS_MITM_to_client", err)
+							return
+						}
+						decryptOutConn, err := TLS_MITM_to_server(statisticOutConn, targetAddr.Host(), isTLS)
+						if err != nil {
+							log.Println("TLS_MITM_to_server", err)
+							return
+						}
+						httpCache(decryptInConn, decryptOutConn)
+					} else {
+						go io.Copy(statisticOutConn, wrappedInConn)
+						io.Copy(wrappedInConn, statisticOutConn)
+					}
 				}
 				subActiveUserLink(targetAddr.UserId)
 				select {

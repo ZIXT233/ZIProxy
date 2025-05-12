@@ -25,11 +25,13 @@ var (
 	ActiveUserLink   = make(map[string]uint)
 	Version          string
 	StartUpTime      time.Time
+	HttpCacheEnable  bool
 )
 
 func SyncInbound(d *db.ProxyData) {
 	stopInboundProc(d.ID) //will close old conn
-	inbound, err := proxy.InboundFromConfig(d)
+	config, _ := utils.UnmarshalConfig(d.Config)
+	inbound, err := proxy.InboundFromConfig(d.ID, config)
 	if err != nil {
 		log.Printf("Failed to load inbound %s err: %v", d.ID, err)
 		return
@@ -50,7 +52,8 @@ func SyncOutbound(d *db.ProxyData) {
 	if d.ID == "block" {
 		return
 	}
-	outbound, err := proxy.OutboundFromConfig(d)
+	config, _ := utils.UnmarshalConfig(d.Config)
+	outbound, err := proxy.OutboundFromConfig(d.ID, config)
 	if err != nil {
 		log.Printf("Failed to load outbound %s err: %v", d.ID, err)
 		return
@@ -159,6 +162,27 @@ func Start(config *utils.RootConfig, version string) {
 		panic(err)
 	}
 	initRouter(config.StaticPath)
+	HttpCacheEnable = true
+	err = InitTlsMITM(config.MITMCACert, config.MITMCAKey)
+	if err != nil {
+		log.Printf("Failed to init tls mitm cert err: %v", err)
+		HttpCacheEnable = false
+	}
+	if config.RedisAddr == "" {
+		HttpCacheEnable = false
+	} else {
+		initRedis(config.RedisAddr, config.RedisPasswd, config.RedisDb)
+		err = testRedis()
+		if err != nil {
+			log.Printf("Failed to ping redis err: %v", err)
+			HttpCacheEnable = false
+		}
+	}
+	if HttpCacheEnable {
+		log.Printf("Http proxy cache enabled")
+	} else {
+		log.Printf("Http proxy cache disabled because mitm or redis is not configured")
+	}
 	Version = version
 
 	users, _, _ := DBM.User.List(0, db.MAX)

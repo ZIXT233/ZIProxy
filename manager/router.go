@@ -79,7 +79,7 @@ func matchIP(pattern string, ip net.IP) bool {
 	return false
 }
 
-func RouteOutbound(target *proxy.TargetAddr) string {
+func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 	var geoCodes []string
 	if target.Hostname != "" {
 		geoCodes = siteDb.LookupCodes(target.Hostname)
@@ -89,6 +89,15 @@ func RouteOutbound(target *proxy.TargetAddr) string {
 
 	if user, ok := UserMap.Load(target.UserId); ok {
 		if userGroup, ok := UserGroupMap.Load(user.(*db.User).UserGroupID); ok {
+			avail_inbound := false
+			for _, inbound := range userGroup.(*db.UserGroup).AvailInbounds {
+				if inbound.ID == inboundName {
+					avail_inbound = true
+				}
+			}
+			if !avail_inbound {
+				return "block"
+			}
 			if routeScheme, ok := RouteSchemeMap.Load(userGroup.(*db.UserGroup).RouteSchemeID); ok {
 				if !routeScheme.(*db.RouteScheme).Enabled {
 					return "block"

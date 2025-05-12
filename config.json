@@ -3,5 +3,8 @@
   "statistic_db": "ziproxy_statistic.db",
   "web_address": "127.0.0.1:2339",
   "web_secret": "23333",
-  "static_path": "./static"
+  "static_path": "./static",
+  "mitm_ca_cert": "./static/cert/ca.crt",
+  "mitm_ca_key": "./static/cert/ca.key",
+  "redis_addr": "localhost:6379"
 }

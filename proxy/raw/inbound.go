@@ -1,18 +1,17 @@
 package raw
 
 import (
-	"io"
+	"fmt"
 	"net"
 	"sync"
 
-	"github.com/ZIXT233/ziproxy/db"
 	"github.com/ZIXT233/ziproxy/proxy"
-	"github.com/ZIXT233/ziproxy/utils"
 )
 
 type Inbound struct {
 	addr         string
 	name         string
+	upper        proxy.Inbound
 	config       map[string]interface{}
 	closeChanSet sync.Map
 }
@@ -21,6 +20,13 @@ func (in *Inbound) Name() string                   { return in.name }
 func (in *Inbound) Scheme() string                 { return scheme }
 func (in *Inbound) Addr() string                   { return in.addr }
 func (in *Inbound) Config() map[string]interface{} { return in.config }
+
+func (in *Inbound) SetAddr(addr string) {
+	in.addr = addr
+}
+func (in *Inbound) SetUpper(upper proxy.Inbound) {
+	in.upper = upper
+}
 func (in *Inbound) Stop() {
 	in.CloseAllConn()
 	return
@@ -29,14 +35,19 @@ func (in *Inbound) Stop() {
 func init() {
 	proxy.RegisterInbound(scheme, RawInboundCreator)
 }
-func RawInboundCreator(proxyData *db.ProxyData) (proxy.Inbound, error) {
-	config, _ := utils.UnmarshalConfig(proxyData.Config)
+func RawInboundCreator(name string, config map[string]interface{}) (proxy.Inbound, error) {
+	addr, ok := config["address"].(string)
+	if !ok {
+		return nil, fmt.Errorf("address is required")
+	}
 	in := &Inbound{
-		addr:   config["address"].(string),
-		name:   proxyData.ID,
+		addr:   addr,
+		name:   name,
 		config: config,
 	}
-	return in, nil
+	_, err := proxy.UpperInboundCreate(in, config)
+
+	return in, err
 }
 
 func (in *Inbound) UnregCloseChan(closeChan chan struct{}) {
@@ -45,7 +56,7 @@ func (in *Inbound) UnregCloseChan(closeChan chan struct{}) {
 func (in *Inbound) CloseAllConn() {
 	proxy.CloseAllConn(&in.closeChanSet)
 }
-func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (io.ReadWriter, *proxy.TargetAddr, chan struct{}, error) {
+func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (net.Conn, *proxy.TargetAddr, chan struct{}, error) {
 	closeChan := make(chan struct{})
 	in.closeChanSet.LoadOrStore(closeChan, struct{}{})
 	return underlay, nil, closeChan, nil

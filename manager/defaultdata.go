@@ -39,9 +39,10 @@ func loadDefaultData(dbm *db.RepoManager) {
       "scheme": "tls",
       "cert": "static/cert/server.crt",
       "key": "static/cert/server.key",
+
+        "address": "0.0.0.0:8083",
       "upper": { 
         "scheme": "https",
-        "address": "0.0.0.0:8083",
         "guestForward": "localhost:2339"
       }
     }`,

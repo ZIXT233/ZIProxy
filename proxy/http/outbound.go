@@ -2,19 +2,17 @@ package http
 
 import (
 	"fmt"
-	"io"
 	"net"
 	"strings"
 	"sync"
 
-	"github.com/ZIXT233/ziproxy/db"
 	"github.com/ZIXT233/ziproxy/proxy"
-	"github.com/ZIXT233/ziproxy/utils"
 )
 
 type Outbound struct {
 	addr         string
 	name         string
+	upper        proxy.Outbound
 	config       map[string]interface{}
 	closeChanSet sync.Map
 }
@@ -23,23 +21,30 @@ func (out *Outbound) Scheme() string                 { return scheme }
 func (out *Outbound) Addr() string                   { return out.addr }
 func (out *Outbound) Name() string                   { return out.name }
 func (out *Outbound) Config() map[string]interface{} { return out.config }
+func (out *Outbound) SetAddr(addr string) {
+	out.addr = addr
+}
+func (out *Outbound) SetUpper(upper proxy.Outbound) {
+	out.upper = upper
+}
 
 func init() {
 	proxy.RegisterOutbound(scheme, HttpOutboundCreator)
 	proxy.RegisterOutbound(scheme+"s", HttpOutboundCreator)
 }
-func HttpOutboundCreator(proxyData *db.ProxyData) (proxy.Outbound, error) {
-	config, _ := utils.UnmarshalConfig(proxyData.Config)
+func HttpOutboundCreator(name string, config map[string]interface{}) (proxy.Outbound, error) {
 	addr, ok := config["address"].(string)
 	if !ok {
 		return nil, fmt.Errorf("address is required")
 	}
 	out := &Outbound{
 		addr:   addr,
-		name:   proxyData.ID,
+		name:   name,
 		config: config,
 	}
-	return out, nil
+
+	_, err := proxy.UpperOutboundCreate(out, config)
+	return out, err
 }
 
 func (out *Outbound) UnregCloseChan(closeChan chan struct{}) {
@@ -49,7 +54,7 @@ func (out *Outbound) CloseAllConn() {
 	proxy.CloseAllConn(&out.closeChanSet)
 }
 
-func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.ReadWriter, chan struct{}, error) {
+func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (net.Conn, chan struct{}, error) {
 	var authHead string
 	if out.config["linkToken"] != nil {
 		token := out.config["linkToken"].(string)
@@ -70,7 +75,11 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (io.R
 		return nil, nil, fmt.Errorf("not established")
 	}
 
-	closeChan := make(chan struct{})
-	out.closeChanSet.LoadOrStore(closeChan, struct{}{})
-	return underlay, closeChan, nil
+	if out.upper != nil {
+		return out.upper.WrapConn(underlay, target)
+	} else {
+		closeChan := make(chan struct{})
+		out.closeChanSet.LoadOrStore(closeChan, struct{}{})
+		return underlay, closeChan, nil
+	}
 }

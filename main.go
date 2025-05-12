@@ -15,6 +15,7 @@ import (
 	_ "github.com/ZIXT233/ziproxy/proxy/direct"
 	_ "github.com/ZIXT233/ziproxy/proxy/http"
 	_ "github.com/ZIXT233/ziproxy/proxy/raw"
+	_ "github.com/ZIXT233/ziproxy/proxy/rev_http"
 	_ "github.com/ZIXT233/ziproxy/proxy/tls"
 	"github.com/ZIXT233/ziproxy/utils"
 )

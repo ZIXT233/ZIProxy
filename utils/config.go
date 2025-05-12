@@ -11,6 +11,11 @@ type RootConfig struct {
 	WebAddress  string `json:"web_address"`
 	WebSecret   string `json:"web_secret"`
 	StaticPath  string `json:"static_path"`
+	MITMCACert  string `json:"mitm_ca_cert"`
+	MITMCAKey   string `json:"mitm_ca_key"`
+	RedisAddr   string `json:"redis_addr"`
+	RedisPasswd string `json:"redis_passwd"`
+	RedisDb     int    `json:"redis_db"`
 }
 
 func LoadRootConfig(file string) (*RootConfig, error) {
