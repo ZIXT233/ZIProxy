@@ -63,6 +63,8 @@ func (in *Inbound) UnregCloseChan(closeChan chan struct{}) {
 func (in *Inbound) CloseAllConn() {
 	proxy.CloseAllConn(&in.closeChanSet)
 }
+
+// 反向代理模块中实现HTTP请求修改操作的包装器函数
 func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (net.Conn, *proxy.TargetAddr, chan struct{}, error) {
 	peekConn := utils.NewPeekConn(underlay)
 	wrappedConn := &InConn{Conn: peekConn}

@@ -6,34 +6,65 @@ import (
 	"context"
 	"encoding/gob"
 	"fmt"
+	"github.com/dgraph-io/badger/v4"
 	"io"
 	"log"
 	"net"
 	"net/http"
 	"strings"
-	"sync"
 	"time"
-
-	"github.com/go-redis/redis/v8"
 )
 
-var rdb *redis.Client
+var bdb *badger.DB
+var cacheTTL int
 var ctx = context.Background()
-var rdbMu sync.Mutex
 
-func init() {
-	gob.Register(CacheEntry{})
+// 初始化 Badger DB
+func initBadger(dir string, ttl int) error {
+	var err error
+	bdb, err = badger.Open(badger.DefaultOptions(dir)) // 可选：替换 nil 为自定义日志
+	if err != nil {
+		log.Fatal(err)
+	}
+	cacheTTL = ttl
+	return nil
 }
-func initRedis(addr, passwd string, db int) {
-	rdb = redis.NewClient(&redis.Options{
-		Addr:     addr,
-		Password: passwd, // no password
-		DB:       db,     // default DB
+
+// 设置键值对并设置过期时间（秒）
+func setToBadger(key string, value []byte, maxAge int) error {
+	var ttl time.Duration
+	if maxAge > 0 {
+		ttl = time.Duration(maxAge) * time.Second
+	} else {
+		ttl = 0 // 默认永不过期
+	}
+
+	return bdb.Update(func(txn *badger.Txn) error {
+		entry := badger.NewEntry([]byte(key), value)
+		if ttl > 0 {
+			entry = entry.WithTTL(ttl)
+		}
+		return txn.SetEntry(entry)
 	})
 }
-func testRedis() error {
-	_, err := rdb.Ping(ctx).Result()
-	return err
+func getFromBadger(key string) ([]byte, bool) {
+	var valCopy []byte
+	err := bdb.View(func(txn *badger.Txn) error {
+		item, err := txn.Get([]byte(key))
+		if err != nil {
+			return err
+		}
+		valCopy, err = item.ValueCopy(nil)
+		return err
+	})
+
+	if err != nil {
+		return nil, false
+	}
+	return valCopy, true
+}
+func init() {
+	gob.Register(CacheEntry{})
 }
 func buildCacheKey(req *http.Request) string {
 	vary := req.Header.Get("Vary")
@@ -88,21 +119,7 @@ func parseCacheControl(s string) CacheControl {
 	}
 	return cc
 }
-func setToRedis(key string, respBytes []byte, maxAge int) {
-	if maxAge > 0 {
-		rdb.Set(ctx, key, respBytes, time.Duration(maxAge)*time.Second)
-	} else {
-		rdb.Set(ctx, key, respBytes, 0)
-	}
-}
 
-func getFromRedis(key string) ([]byte, bool) {
-	val, err := rdb.Get(ctx, key).Bytes()
-	if err != nil {
-		return nil, false
-	}
-	return val, true
-}
 func isCachable(resp *http.Response, req *http.Request) bool {
 	if req.Method != "GET" {
 		return false
@@ -183,7 +200,7 @@ func forwardResponseWithCacheUpdate(cacheKey string, resp *http.Response, client
 		log.Println("Error writing to server:", err)
 		return err
 	}
-	go setToRedis(cacheKey, newEntryBytes, calculateCacheTTL(newEntry.ExpireTime))
+	go setToBadger(cacheKey, newEntryBytes, cacheTTL)
 	return nil
 }
 func httpCache(clientConn, serverConn net.Conn) {
@@ -203,20 +220,24 @@ func httpCache(clientConn, serverConn net.Conn) {
 			break
 		}
 		var resp *http.Response
+		//由请求头信息生成cacheKey
 		cacheKey = buildCacheKey(req)
 		log.Printf("Cache Search " + req.Method + " " + req.URL.String())
-		cacheValue, cacheHit := getFromRedis(cacheKey)
+		//从Badger数据库中查询缓存
+		cacheValue, cacheHit := getFromBadger(cacheKey)
 		responseFinished := false
 
 		if req.Method == "GET" && cacheHit {
+			//如果数据库中有响应缓存内容
 			log.Println("Serving from cache:", req.URL)
 			entry, err := parseCacheEntry(cacheValue)
 			if err != nil {
 				log.Println("Error parsing cache entry:", err)
 			} else {
+				//根据请求头中的Cache-Contronl字段控制缓存下一步行为
 				reqcc := parseCacheControl(req.Header.Get("Cache-Control"))
 				if isFresh(entry) && !reqcc.NoCache {
-
+					//如果缓存足够新鲜且请求头不要求强制验证缓存内容
 					_, err := clientConn.Write(entry.RespBytes)
 					if err != nil {
 						log.Println("Error writing to cache:", err)
@@ -225,6 +246,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 						responseFinished = true
 					}
 				} else {
+					//如果需要验证缓存内容，构造缓存验证请求头
 					modreq := req.Clone(context.Background())
 					if entry.ETag != "" {
 						modreq.Header.Set("If-None-Match", entry.ETag)
@@ -233,12 +255,14 @@ func httpCache(clientConn, serverConn net.Conn) {
 						modreq.Header.Set("Last-Modified", entry.LastMod)
 					}
 					modreq.Body = http.NoBody
+					//发送验证请求头到目标网站
 					resp, err = forwardRequest(modreq, serverConn)
 					if err != nil {
 						log.Println("Error forwarding cache verify request:", err)
 					} else {
 						defer resp.Body.Close()
 						if resp.StatusCode == http.StatusNotModified {
+							// 如果响应报文为304状态，无需更新缓存内容，延长缓存内容生命周期
 							_, err = clientConn.Write(entry.RespBytes)
 							if err != nil {
 								log.Println("Error writing to cache:", err)
@@ -251,10 +275,11 @@ func httpCache(clientConn, serverConn net.Conn) {
 							if err != nil {
 								log.Println("Error serializing cache entry:", err)
 							} else {
-								go setToRedis(cacheKey, newEntryBytes, calculateCacheTTL(newEntry.ExpireTime))
+								go setToBadger(cacheKey, newEntryBytes, cacheTTL)
 							}
 
 						} else if resp.StatusCode == http.StatusOK {
+							// 如果响应报文为200状态，更新缓存内容
 							log.Println("200 OK, replacing cache")
 
 							err = forwardResponseWithCacheUpdate(cacheKey, resp, clientConn)
@@ -265,6 +290,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 							}
 
 						} else {
+							//未预期状态，不使用缓存
 							log.Printf("No use cache, because %s at %s", resp.Status, req.URL.String())
 
 						}

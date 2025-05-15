@@ -6,5 +6,6 @@
   "static_path": "./static",
   "mitm_ca_cert": "./static/cert/ca.crt",
   "mitm_ca_key": "./static/cert/ca.key",
-  "redis_addr": "localhost:6379"
+  "badger_dir": "./badger",
+  "badger_ttl": 3600
 }

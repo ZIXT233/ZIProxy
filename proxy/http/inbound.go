@@ -69,9 +69,12 @@ func (in *Inbound) CloseAllConn() {
 }
 func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (net.Conn, *proxy.TargetAddr, chan struct{}, error) {
 	var b []byte
+	//探测流，提供对IO流数据的探测而不读出
 	peekConn := utils.NewPeekConn(underlay)
+	//模块包装的IO流
 	wrappedConn := &InConn{Conn: peekConn}
 
+	//探测HTTP报头
 	b, err := peekConn.Peek(1024)
 	if err != nil {
 		log.Println("read", err)
@@ -80,8 +83,11 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	var method, URL, address string
 	n := len(b)
 	//split b by '\r\n
+
+	//根据HTTP报头格式，用\r\n分割每一属性行
 	headLines := strings.Split(string(b[:n]), "\r\n")
 	fmt.Sscanf(headLines[0], "%s%s", &method, &URL)
+	//将每一属性装入字典
 	header := make(map[string]string)
 	for _, line := range headLines {
 		pair := strings.SplitN(line, ":", 2)
@@ -93,7 +99,10 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 		header["linkToken"] = strings.Trim(URL, "/ ")
 	}
 
+	//结合用户认证模块进行认证
 	userId := authFunc(header)
+
+	//实现端口防探测保护，开启后可，如果没有代理认证凭证，则将流量转发到guestForward对应地址，该地址一般对应非代理服务
 	forward := in.config["guestForward"]
 	if forward != nil && userId == "guest" {
 		forwardAddr, ok := forward.(string)
@@ -110,19 +119,22 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 		io.Copy(wrappedConn, forwardConn)
 		return nil, nil, nil, fmt.Errorf("auth fail")
 	}
+
 	if method == "CONNECT" {
 		address = URL
-	} else { //否则为 http 协议
+	} else {
+		//GET方法
 		hostPortURL, err := url.Parse(URL)
 		if err != nil {
 			return nil, nil, nil, err
 		}
 		address = hostPortURL.Host
+		//补充缺省端口号
 		if strings.Index(hostPortURL.Host, ":") == -1 {
 			address = hostPortURL.Host + ":80"
 		}
 	}
-
+	//构造代理目标对象
 	targetAddr, err := proxy.NewTargetAddr(address)
 	targetAddr.UserId = userId
 
@@ -132,13 +144,17 @@ func (in *Inbound) WrapConn(underlay net.Conn, authFunc func(map[string]string) 
 	}
 	if method == "CONNECT" {
 		tmp := make([]byte, 1024)
+		//如果是CONNECT方法，则IO流中报头数据并不用传递给代理目标，用Read消耗掉
 		wrappedConn.Read(tmp)
+		//完成握手
 		fmt.Fprint(wrappedConn, "HTTP/1.1 200 Connection established\r\n\r\n")
 		wrappedConn.httpType = "https"
-	} else { //如果使用 http 协议，需将从客户端得到的 http 请求转发给服务端
+	} else {
+		//如果使用 GET方法协议，保留IO流中报头数据
 		wrappedConn.httpType = "http"
 	}
 
+	//处理上层叠加协议
 	if in.upper != nil {
 		innerConn, subTarget, closeChan, err := in.upper.WrapConn(wrappedConn, authFunc)
 		if err != nil {

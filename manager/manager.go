@@ -168,20 +168,20 @@ func Start(config *utils.RootConfig, version string) {
 		log.Printf("Failed to init tls mitm cert err: %v", err)
 		HttpCacheEnable = false
 	}
-	if config.RedisAddr == "" {
+	if config.BadgerTTL <= 0 {
 		HttpCacheEnable = false
 	} else {
-		initRedis(config.RedisAddr, config.RedisPasswd, config.RedisDb)
-		err = testRedis()
+		err = initBadger(config.BadgerDir, config.BadgerTTL)
 		if err != nil {
-			log.Printf("Failed to ping redis err: %v", err)
+			log.Printf("Failed to init badger err: %v", err)
 			HttpCacheEnable = false
 		}
 	}
+
 	if HttpCacheEnable {
 		log.Printf("Http proxy cache enabled")
 	} else {
-		log.Printf("Http proxy cache disabled because mitm or redis is not configured")
+		log.Printf("Http proxy cache disabled because mitm or badger is not configured")
 	}
 	Version = version
 

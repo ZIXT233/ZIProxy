@@ -81,6 +81,7 @@ func matchIP(pattern string, ip net.IP) bool {
 
 func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 	var geoCodes []string
+	//查询代理目标的地理位置或着组织信息
 	if target.Hostname != "" {
 		geoCodes = siteDb.LookupCodes(target.Hostname)
 	} else {
@@ -88,8 +89,10 @@ func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 	}
 
 	if user, ok := UserMap.Load(target.UserId); ok {
+		//根据代理用户查询对应代理用户组
 		if userGroup, ok := UserGroupMap.Load(user.(*db.User).UserGroupID); ok {
 			avail_inbound := false
+			//验证访问的入站代理是否在当前用户组可用范围内
 			for _, inbound := range userGroup.(*db.UserGroup).AvailInbounds {
 				if inbound.ID == inboundName {
 					avail_inbound = true
@@ -98,14 +101,17 @@ func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 			if !avail_inbound {
 				return "block"
 			}
+			//根据代理用户组查询对应路由发难
 			if routeScheme, ok := RouteSchemeMap.Load(userGroup.(*db.UserGroup).RouteSchemeID); ok {
 				if !routeScheme.(*db.RouteScheme).Enabled {
 					return "block"
 				}
+				//关联路由规则已经由GORM框架的Preload机制自动装载
 				rules := routeScheme.(*db.RouteScheme).Rules
 				sort.Slice(rules, func(i, j int) bool {
 					return rules[i].Priority < rules[j].Priority
 				})
+				//迭代匹配路由规则
 				for _, r := range rules {
 					var match bool
 					patterns := strings.Split(r.Pattern, ",")
@@ -127,6 +133,7 @@ func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 						}
 					}
 					if match {
+						//出站代理ID列表已经由GORM框架的Preload机制装载，在多个入站代理之间进行随机负载均衡
 						id := r.Outbounds[rand.Intn(len(r.Outbounds))].ID
 						return id
 					}

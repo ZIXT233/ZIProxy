@@ -13,9 +13,8 @@ type RootConfig struct {
 	StaticPath  string `json:"static_path"`
 	MITMCACert  string `json:"mitm_ca_cert"`
 	MITMCAKey   string `json:"mitm_ca_key"`
-	RedisAddr   string `json:"redis_addr"`
-	RedisPasswd string `json:"redis_passwd"`
-	RedisDb     int    `json:"redis_db"`
+	BadgerDir   string `json:"badger_dir"`
+	BadgerTTL   int    `json:"badger_ttl"`
 }
 
 func LoadRootConfig(file string) (*RootConfig, error) {

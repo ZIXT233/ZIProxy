@@ -54,12 +54,15 @@ func (out *Outbound) CloseAllConn() {
 	proxy.CloseAllConn(&out.closeChanSet)
 }
 
+// HTTP出站代理模块中实现代理请求头添加，握手的IO流包装器函数
 func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (net.Conn, chan struct{}, error) {
 	var authHead string
+	//根据配置文件在生成代理凭证请求属性
 	if out.config["linkToken"] != nil {
 		token := out.config["linkToken"].(string)
 		authHead = fmt.Sprintf("linkToken:%s\r\n", token)
 	}
+	//生成HTTP CONNECT请求头，携带代理凭证属性
 	_, err := fmt.Fprintf(underlay, "CONNECT %s HTTP/1.1\r\n"+
 		"%s"+
 		"\r\n", target.String(), authHead)
@@ -67,6 +70,7 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (net.
 		return nil, nil, err
 	}
 	var oriRead [1024]byte
+	//HTTP CONNECT握手操作
 	oriLen, err := underlay.Read(oriRead[:])
 	if err != nil {
 		return nil, nil, err
@@ -74,7 +78,7 @@ func (out *Outbound) WrapConn(underlay net.Conn, target *proxy.TargetAddr) (net.
 	if !strings.Contains(string(oriRead[:oriLen]), "200") {
 		return nil, nil, fmt.Errorf("not established")
 	}
-
+	//处理上层叠加协议，返回处理后IO流
 	if out.upper != nil {
 		return out.upper.WrapConn(underlay, target)
 	} else {
