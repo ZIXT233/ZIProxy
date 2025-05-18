@@ -122,11 +122,10 @@ func (in *Inbound) GetLinkConfig(defaultAccessAddr, token string) map[string]int
 	config := make(map[string]interface{})
 	config["scheme"] = scheme
 	config["verifyByPsk"] = in.verifyByPsk
+	config["address"] = proxy.GetLinkAddr(in, defaultAccessAddr)
 	if in.upper != nil {
 		upperConfig := in.upper.GetLinkConfig(defaultAccessAddr, token)
 		config["upper"] = upperConfig
-	} else {
-		config["address"] = proxy.GetLinkAddr(in, defaultAccessAddr)
 	}
 	return config
 }
