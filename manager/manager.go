@@ -74,7 +74,10 @@ func RemoveRouteScheme(id string) {
 }
 func SyncUser(d *db.User) {
 	UserMap.Store(d.ID, d)
-	UserTokenMap.Store(d.LinkToken, d)
+	if d.ID != "forward" && d.ID != "guest" {
+		UserTokenMap.Store(d.LinkToken, d)
+	}
+
 }
 func RemoveUser(id string) {
 	UserMap.Delete(id)
@@ -168,10 +171,10 @@ func Start(config *utils.RootConfig, version string) {
 		log.Printf("Failed to init tls mitm cert err: %v", err)
 		HttpCacheEnable = false
 	}
-	if config.BadgerTTL <= 0 {
+	if config.BadgerSize <= 0 {
 		HttpCacheEnable = false
 	} else {
-		err = initBadger(config.BadgerDir, config.BadgerTTL)
+		err = initHttpCacheDB(config.BadgerDir, config.BadgerSize)
 		if err != nil {
 			log.Printf("Failed to init badger err: %v", err)
 			HttpCacheEnable = false

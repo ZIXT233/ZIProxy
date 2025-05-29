@@ -141,5 +141,5 @@ func RouteOutbound(target *proxy.TargetAddr, inboundName string) string {
 			}
 		}
 	}
-	return "direct"
+	return "block"
 }

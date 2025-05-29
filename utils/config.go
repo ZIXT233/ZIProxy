@@ -14,7 +14,7 @@ type RootConfig struct {
 	MITMCACert  string `json:"mitm_ca_cert"`
 	MITMCAKey   string `json:"mitm_ca_key"`
 	BadgerDir   string `json:"badger_dir"`
-	BadgerTTL   int    `json:"badger_ttl"`
+	BadgerSize  int    `json:"badger_size"`
 }
 
 func LoadRootConfig(file string) (*RootConfig, error) {

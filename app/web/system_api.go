@@ -3,6 +3,7 @@ package web
 import (
 	"github.com/ZIXT233/ziproxy/manager"
 	"github.com/gin-gonic/gin"
+	"log"
 )
 
 func getSystemInfo(c *gin.Context) {
@@ -29,6 +30,16 @@ func getSystemName(c *gin.Context) {
 		"systemName": sysInfo.SystemName,
 	}))
 }
+func clearHTTPCache(c *gin.Context) {
+	err := manager.ClearHTTPCache()
+	if err != nil {
+		log.Println(err)
+		c.JSON(500, errorR(500, "Failed to clear badger cache"))
+	} else {
+		log.Println("Clear HTTP cache successfully")
+		c.JSON(200, successR(nil))
+	}
+}
 
 func updateSystemInfo(c *gin.Context) {
 	sysInfo, err := manager.DBM.SystemInfo.GetbyID(1)
@@ -36,6 +47,7 @@ func updateSystemInfo(c *gin.Context) {
 		c.JSON(500, errorR(500, "Failed to get system info"))
 		return
 	}
+	c.JSON(200, successR(gin.H{}))
 	var req struct {
 		SystemName        string `json:"systemName"`
 		Description       string `json:"description"`

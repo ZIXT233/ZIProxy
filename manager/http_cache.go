@@ -7,6 +7,7 @@ import (
 	"encoding/gob"
 	"fmt"
 	"github.com/dgraph-io/badger/v4"
+	"github.com/hashicorp/golang-lru/v2"
 	"io"
 	"log"
 	"net"
@@ -16,38 +17,60 @@ import (
 )
 
 var bdb *badger.DB
-var cacheTTL int
 var ctx = context.Background()
+var LRU *lru.Cache[string, any]
 
 // 初始化 Badger DB
-func initBadger(dir string, ttl int) error {
+func initHttpCacheDB(dir string, size int) error {
 	var err error
 	bdb, err = badger.Open(badger.DefaultOptions(dir)) // 可选：替换 nil 为自定义日志
 	if err != nil {
 		log.Fatal(err)
 	}
-	cacheTTL = ttl
+	LRU, _ = lru.NewWithEvict(size, BadgerDelete)
+
+	err = bdb.View(func(txn *badger.Txn) error {
+		it := txn.NewIterator(badger.DefaultIteratorOptions)
+		defer it.Close()
+
+		for it.Rewind(); it.Valid(); it.Next() {
+			item := it.Item()
+			k := item.Key()
+			LRU.Add(string(k), nil)
+		}
+
+		return nil
+	})
+	log.Printf("加载了%d条HTTP代理缓存", LRU.Len())
 	return nil
 }
 
-// 设置键值对并设置过期时间（秒）
-func setToBadger(key string, value []byte, maxAge int) error {
-	var ttl time.Duration
-	if maxAge > 0 {
-		ttl = time.Duration(maxAge) * time.Second
-	} else {
-		ttl = 0 // 默认永不过期
-	}
-
-	return bdb.Update(func(txn *badger.Txn) error {
-		entry := badger.NewEntry([]byte(key), value)
-		if ttl > 0 {
-			entry = entry.WithTTL(ttl)
-		}
-		return txn.SetEntry(entry)
+func BadgerDelete(key string, nothing any) {
+	log.Printf("HTTP缓存条目%s被淘汰", key)
+	bdb.Update(func(txn *badger.Txn) error {
+		return txn.Delete([]byte(key))
 	})
 }
-func getFromBadger(key string) ([]byte, bool) {
+
+func ClearHTTPCache() error {
+	LRU.Purge()
+	return bdb.DropAll()
+}
+
+// 设置键值对
+func HttpCacheSet(key string, value []byte) error {
+	LRU.Add(key, nil)
+	log.Printf("添加HTTP缓存条目%s, 现在缓存数目为:%d", key, LRU.Len())
+	return bdb.Update(func(txn *badger.Txn) error {
+		return txn.Set([]byte(key), value)
+	})
+}
+
+func HttpCacheGet(key string) ([]byte, bool) {
+	_, ok := LRU.Get(key)
+	if !ok {
+		return nil, false
+	}
 	var valCopy []byte
 	err := bdb.View(func(txn *badger.Txn) error {
 		item, err := txn.Get([]byte(key))
@@ -57,7 +80,6 @@ func getFromBadger(key string) ([]byte, bool) {
 		valCopy, err = item.ValueCopy(nil)
 		return err
 	})
-
 	if err != nil {
 		return nil, false
 	}
@@ -79,7 +101,7 @@ func buildCacheKey(req *http.Request) string {
 		}
 		varyVal = strings.Join(parts, "|")
 	}
-	return fmt.Sprintf("cache:%s:%s:%s:%s", req.Method, req.Host, req.URL.String(), varyVal)
+	return fmt.Sprintf("%s:%s:%s:%s", req.Method, req.Host, req.URL.String(), varyVal)
 }
 
 type CacheControl struct {
@@ -155,7 +177,10 @@ func isFresh(entry *CacheEntry) bool {
 }
 
 func forwardRequest(req *http.Request, serverConn io.ReadWriter) (*http.Response, error) {
-	err := req.Write(serverConn)
+	var reqBuf bytes.Buffer
+	twinWriter := io.MultiWriter(serverConn, &reqBuf)
+	err := req.Write(twinWriter)
+	//log.Println(string(reqBuf.Bytes()))
 	if err != nil {
 		log.Println("Error writing to server:", err)
 		return nil, err
@@ -175,14 +200,6 @@ func updateExpireTime(entry *CacheEntry, resp *http.Response) *CacheEntry {
 	}
 }
 
-func calculateCacheTTL(expire time.Time) int {
-	ttl := expire.Sub(time.Now())
-	if ttl < 0 {
-		return 0
-	}
-	return int(ttl.Seconds()) + 3600 //比expiretime多
-}
-
 func forwardResponseWithCacheUpdate(cacheKey string, resp *http.Response, clientConn io.ReadWriter) error {
 	newEntry := CacheEntry{
 		ETag:       resp.Header.Get("ETag"),
@@ -200,7 +217,7 @@ func forwardResponseWithCacheUpdate(cacheKey string, resp *http.Response, client
 		log.Println("Error writing to server:", err)
 		return err
 	}
-	go setToBadger(cacheKey, newEntryBytes, cacheTTL)
+	go HttpCacheSet(cacheKey, newEntryBytes)
 	return nil
 }
 func httpCache(clientConn, serverConn net.Conn) {
@@ -212,6 +229,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 	//应对keepalive，采用循环停等
 	for {
 		req, err := http.ReadRequest(reader)
+
 		if err == io.EOF {
 			break
 		}
@@ -224,7 +242,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 		cacheKey = buildCacheKey(req)
 		log.Printf("Cache Search " + req.Method + " " + req.URL.String())
 		//从Badger数据库中查询缓存
-		cacheValue, cacheHit := getFromBadger(cacheKey)
+		cacheValue, cacheHit := HttpCacheGet(cacheKey)
 		responseFinished := false
 
 		if req.Method == "GET" && cacheHit {
@@ -242,7 +260,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 					if err != nil {
 						log.Println("Error writing to cache:", err)
 					} else {
-						log.Println("***Use cache " + req.URL.String() + "***") // + string(entry.RespBytes))
+						log.Println("*** Use cache " + req.URL.String() + " ***") // + string(entry.RespBytes))
 						responseFinished = true
 					}
 				} else {
@@ -275,7 +293,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 							if err != nil {
 								log.Println("Error serializing cache entry:", err)
 							} else {
-								go setToBadger(cacheKey, newEntryBytes, cacheTTL)
+								go HttpCacheSet(cacheKey, newEntryBytes)
 							}
 
 						} else if resp.StatusCode == http.StatusOK {
@@ -323,7 +341,7 @@ func httpCache(clientConn, serverConn net.Conn) {
 			}
 		}
 
-		if resp == nil || resp.Header.Get("Connection") == "close" {
+		if resp != nil && resp.Header.Get("Connection") == "close" {
 			break
 		}
 	}

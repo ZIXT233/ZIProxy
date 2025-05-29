@@ -92,7 +92,7 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 				}
 
 				//连接超时统计模块
-				outConn = createConnWithTimeout(outConn, time.Second*100)
+				outConn = createConnWithTimeout(outConn, time.Second*10)
 				defer outConn.Close()
 
 				// 通过出站代理实例对应的包装器函数包装代理流量，从而可对流量进行出站代理协议处理，函数返回包装后IO流

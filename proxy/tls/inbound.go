@@ -43,8 +43,16 @@ func init() {
 
 // TLS入站代理实例的创建函数，初始化TLS证书、PSK信息。
 func TlsInboundCreator(name string, config map[string]interface{}) (proxy.Inbound, error) {
-	certFile := config["cert"].(string)
-	keyFile := config["key"].(string)
+	val, ok := config["cert"]
+	if !ok {
+		return nil, fmt.Errorf("cert not found in config")
+	}
+	certFile := val.(string)
+	val, ok = config["key"]
+	if !ok {
+		return nil, fmt.Errorf("key not found in config")
+	}
+	keyFile := val.(string)
 	cert, err := stdtls.LoadX509KeyPair(certFile, keyFile)
 	if err != nil {
 		log.Printf("%s tls.LoadX509KeyPair err: %v", name, err)
