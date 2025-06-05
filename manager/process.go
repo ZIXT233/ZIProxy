@@ -126,6 +126,7 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 				}()
 				//流量统计模块
 				statisticOutConn := StatisticWrap(wrappedOutConn)
+				start_time := time.Now().Truncate(time.Second)
 				//更新用户连接数
 				addActiveUserLink(targetAddr.UserId)
 				//将Inbound侧IO流与Outbound侧IO流进行连接，完成流量转发
@@ -165,7 +166,7 @@ func InboundProcess(inbound proxy.Inbound) (net.Listener, error) {
 				default:
 				}
 				//将流量统计信息记录到数据库
-				statisticOutConn.AddToDB(inbound.Name(), outbound.Name(), targetAddr.UserId, targetAddr.String())
+				statisticOutConn.AddToDB(inbound.Name(), outbound.Name(), targetAddr.UserId, targetAddr.String(), start_time)
 
 			}()
 		}

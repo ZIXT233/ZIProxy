@@ -13,16 +13,21 @@ var (
 )
 
 type Inbound interface {
-	Scheme() string
-	Addr() string
-	SetAddr(string)
-	SetUpper(Inbound)
-	Name() string
-	Config() map[string]interface{}
+	Scheme() string                 //获取入站代理协议
+	Addr() string                   //获取入站代理监听地址
+	SetAddr(string)                 //设置入站代理监听地址
+	SetUpper(Inbound)               //设置入站代理上层协议
+	Name() string                   //获取入站代理实例名称
+	Config() map[string]interface{} //获取入站代理配置参数
+	//入站代理流量包装器方法，接受下层连接IO流和用户认证回调函数进行处理；返回包装后连接、代理目标信息、已注册的连接关闭消息通道、错误信息。
 	WrapConn(underlay net.Conn, authFunc func(map[string]string) string) (net.Conn, *TargetAddr, chan struct{}, error)
+	//入站代理相关连接取消注册的方法，当某一相关连接主动关闭时调用，这样在实例关闭时，就不会重复通知该连接关闭。
 	UnregCloseChan(closeChan chan struct{})
+	//获取入站代理的连接配置信息。
 	GetLinkConfig(defaultHost, token string) map[string]interface{}
+	//通过广播连接关闭消息通道的方式，关闭该入站代理实例所有相关连接。
 	CloseAllConn()
+	//关闭该入站代理实例，除了关闭上述相关连接外，还会停止相关监听协程。
 	Stop()
 }
 type InboundCreator func(name string, config map[string]interface{}) (Inbound, error)
@@ -62,14 +67,17 @@ func UpperInboundCreate(in Inbound, config map[string]interface{}) (Inbound, err
 }
 
 type Outbound interface {
-	Scheme() string
-	Addr() string
-	SetAddr(string)
-	SetUpper(Outbound)
-	Name() string
-	Config() map[string]interface{}
+	Scheme() string                 //获取出站代理协议
+	Addr() string                   //获取出站代理下级网络地址
+	SetAddr(string)                 //设置出站代理下级网络地址
+	SetUpper(Outbound)              //设置出站代理上层协议
+	Name() string                   //设置出站代理实例名称
+	Config() map[string]interface{} //获取出站代理配置参数
+	//出站代理流量包装器方法，接受下层连接IO流和代理目标信息进行处理；返回包装后连接、已注册的连接关闭消息通道、错误信息。
 	WrapConn(underlay net.Conn, target *TargetAddr) (net.Conn, chan struct{}, error)
+	//出站代理相关连接取消注册的方法，当某一相关连接主动关闭时调用，这样在实例关闭时，就不会重复通知该连接关闭。
 	UnregCloseChan(closeChan chan struct{})
+	//通过广播连接关闭消息通道的方式，关闭该出站代理实例所有相关连接。
 	CloseAllConn()
 }
 type OutboundCreator func(name string, config map[string]interface{}) (Outbound, error)
